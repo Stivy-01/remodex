@@ -8,6 +8,7 @@ import SwiftUI
 
 struct TurnComposerAutocompleteState {
     let availableSlashCommands: [TurnComposerSlashCommand]
+    let pluginAutocompleteItems: [CodexPluginMetadata]
     let fileAutocompleteItems: [CodexFuzzyFileMatch]
     let isFileAutocompleteVisible: Bool
     let isFileAutocompleteLoading: Bool
@@ -32,6 +33,7 @@ struct TurnComposerAccessoryState {
     let steeringDraftID: String?
     let composerAttachments: [TurnComposerImageAttachment]
     let composerMentionedFiles: [TurnComposerMentionedFile]
+    let composerMentionedPlugins: [TurnComposerMentionedPlugin]
     let composerMentionedSkills: [TurnComposerMentionedSkill]
     let composerReviewSelection: TurnComposerReviewSelection?
     let isSubagentsSelectionArmed: Bool
@@ -45,6 +47,10 @@ struct TurnComposerAccessoryState {
 
     var showsMentionedFiles: Bool {
         !composerMentionedFiles.isEmpty
+    }
+
+    var showsMentionedPlugins: Bool {
+        !composerMentionedPlugins.isEmpty
     }
 
     var showsMentionedSkills: Bool {
@@ -64,6 +70,6 @@ struct TurnComposerAccessoryState {
     }
 
     var topInputPadding: CGFloat {
-        showsComposerAttachments || showsMentionedFiles || showsMentionedSkills || showsSubagentsSelection || showsVoiceRecordingCapsule || reviewTarget != nil ? 6 : 10
+        showsComposerAttachments || showsMentionedFiles || showsMentionedPlugins || showsMentionedSkills || showsSubagentsSelection || showsVoiceRecordingCapsule || reviewTarget != nil ? 6 : 10
     }
 }

@@ -56,6 +56,7 @@ struct QueuedTurnDraft: Identifiable {
     // Preserves the original composer state so a queued row can move back into the input intact.
     let rawInput: String
     let rawFileMentions: [TurnComposerMentionedFile]
+    let rawPluginMentions: [TurnComposerMentionedPlugin]
     let rawSkillMentions: [TurnComposerMentionedSkill]
     let rawAttachments: [TurnComposerImageAttachment]
     let rawSubagentsSelectionArmed: Bool
@@ -69,6 +70,7 @@ struct QueuedTurnDraft: Identifiable {
         collaborationMode: CodexCollaborationModeKind?,
         rawInput: String? = nil,
         rawFileMentions: [TurnComposerMentionedFile] = [],
+        rawPluginMentions: [TurnComposerMentionedPlugin] = [],
         rawSkillMentions: [TurnComposerMentionedSkill] = [],
         rawAttachments: [TurnComposerImageAttachment] = [],
         rawSubagentsSelectionArmed: Bool = false,
@@ -81,6 +83,7 @@ struct QueuedTurnDraft: Identifiable {
         self.collaborationMode = collaborationMode
         self.rawInput = rawInput ?? text
         self.rawFileMentions = rawFileMentions
+        self.rawPluginMentions = rawPluginMentions
         self.rawSkillMentions = rawSkillMentions
         self.rawAttachments = rawAttachments
         self.rawSubagentsSelectionArmed = rawSubagentsSelectionArmed
@@ -114,6 +117,7 @@ final class TurnViewModel {
         let collaborationMode: CodexCollaborationModeKind?
         let rawInput: String
         let rawFileMentions: [TurnComposerMentionedFile]
+        let rawPluginMentions: [TurnComposerMentionedPlugin]
         let rawSkillMentions: [TurnComposerMentionedSkill]
         let rawAttachments: [TurnComposerImageAttachment]
         let rawReviewSelection: TurnComposerReviewSelection?
@@ -136,9 +140,11 @@ final class TurnViewModel {
     var photoPickerItems: [PhotosPickerItem] = []
     var composerAttachments: [TurnComposerImageAttachment] = []
     var composerMentionedFiles: [TurnComposerMentionedFile] = []
+    var composerMentionedPlugins: [TurnComposerMentionedPlugin] = []
     var composerMentionedSkills: [TurnComposerMentionedSkill] = []
     var composerReviewSelection: TurnComposerReviewSelection?
     var isSubagentsSelectionArmed = false
+    var pluginAutocompleteItems: [CodexPluginMetadata] = []
     var fileAutocompleteItems: [CodexFuzzyFileMatch] = []
     var isFileAutocompleteVisible = false
     var isFileAutocompleteLoading = false
@@ -229,9 +235,12 @@ final class TurnViewModel {
     @ObservationIgnored var pendingGitBranchOperation: GitBranchUserOperation?
     @ObservationIgnored var pendingGitWorktreeOpenHandler: ((GitCreateWorktreeResult) -> Void)?
     @ObservationIgnored private var cachedSkillSearchIndexByRoot: [String: [TurnSkillSearchIndexEntry]] = [:]
+    @ObservationIgnored private var cachedPluginSearchIndexByRoot: [String: [TurnPluginSearchIndexEntry]] = [:]
     @ObservationIgnored var unsupportedSkillsAutocompleteRoots: Set<String> = []
+    @ObservationIgnored var unsupportedPluginsAutocompleteRoots: Set<String> = []
 
     let maxComposerImages = 4
+    let maxPluginAutocompleteItems = 6
     let maxFileAutocompleteItems = 6
     let maxSkillAutocompleteItems = 6
     private let fileAutocompleteDebounceNanoseconds: UInt64 = 180_000_000
@@ -311,6 +320,7 @@ final class TurnViewModel {
         !trimmedComposerInput.isEmpty
             || !composerAttachments.isEmpty
             || !composerMentionedFiles.isEmpty
+            || !composerMentionedPlugins.isEmpty
             || !composerMentionedSkills.isEmpty
             || composerReviewSelection != nil
             || isSubagentsSelectionArmed
@@ -332,6 +342,7 @@ final class TurnViewModel {
         TurnComposerCommandLogic.hasContentConflictingWithReview(
             trimmedInput: trimmedComposerInput,
             mentionedFileCount: composerMentionedFiles.count,
+            mentionedPluginCount: composerMentionedPlugins.count,
             mentionedSkillCount: composerMentionedSkills.count,
             attachmentCount: composerAttachments.count,
             hasSubagentsSelection: isSubagentsSelectionArmed
@@ -419,6 +430,7 @@ final class TurnViewModel {
         input = ""
         composerAttachments.removeAll()
         composerMentionedFiles.removeAll()
+        composerMentionedPlugins.removeAll()
         composerMentionedSkills.removeAll()
     }
 
@@ -495,7 +507,7 @@ final class TurnViewModel {
         guard !isComposerInteractionLocked(activeTurnID: activeTurnID),
               codex.isConnected,
               let root = normalizedAutocompleteRoot(for: thread),
-              let token = Self.trailingFileAutocompleteToken(in: text) else {
+              let token = Self.trailingAtAutocompleteToken(in: text) else {
             resetFileAutocompleteState()
             return
         }
@@ -514,9 +526,12 @@ final class TurnViewModel {
         resetSlashCommandState(clearPendingSelection: true)
 
         let query = token.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isFileQuery = Self.isAllowedFileAutocompleteQuery(query)
+        let isPluginQuery = Self.isAllowedPluginAutocompleteQuery(query)
         guard query.count >= 2 else {
             fileAutocompleteDebounceTask?.cancel()
             fileAutocompleteDebounceTask = nil
+            pluginAutocompleteItems = []
             fileAutocompleteItems = []
             fileAutocompleteQuery = query
             isFileAutocompleteLoading = false
@@ -524,8 +539,18 @@ final class TurnViewModel {
             return
         }
 
+        if query.contains(where: \.isWhitespace), !isFileQuery {
+            resetFileAutocompleteState()
+            return
+        }
+
+        guard isFileQuery || isPluginQuery else {
+            resetFileAutocompleteState()
+            return
+        }
+
         fileAutocompleteQuery = query
-        isFileAutocompleteVisible = true
+        isFileAutocompleteVisible = false
         isFileAutocompleteLoading = true
         fileAutocompleteDebounceTask?.cancel()
 
@@ -544,26 +569,47 @@ final class TurnViewModel {
 
             guard !Task.isCancelled else { return }
 
-            do {
-                let matches = try await codex.fuzzyFileSearch(
+            let normalizedRoot = root
+            async let fileResult: Result<[CodexFuzzyFileMatch], Error> = isFileQuery
+                ? self.fetchFileAutocompleteMatches(
                     query: expectedQuery,
+                    codex: codex,
                     roots: searchRoots,
                     cancellationToken: cancellationToken
                 )
-                guard !Task.isCancelled else { return }
+                : .success([])
+            async let pluginResult: Result<[TurnPluginSearchIndexEntry], Error> = isPluginQuery
+                ? self.fetchPluginAutocompleteIndex(
+                    codex: codex,
+                    root: normalizedRoot
+                )
+                : .success([])
 
-                // Drops stale responses if the user already typed another query.
-                guard self.fileAutocompleteQuery == expectedQuery else { return }
+            let (resolvedFileResult, resolvedPluginResult) = await (fileResult, pluginResult)
+            guard !Task.isCancelled else { return }
 
-                self.fileAutocompleteItems = Array(matches.prefix(self.maxFileAutocompleteItems))
-                self.isFileAutocompleteLoading = false
-                self.isFileAutocompleteVisible = true
-            } catch {
-                guard self.fileAutocompleteQuery == expectedQuery else { return }
-                self.fileAutocompleteItems = []
-                self.isFileAutocompleteLoading = false
-                self.isFileAutocompleteVisible = false
+            // Drops stale responses if the user already typed another query.
+            guard self.fileAutocompleteQuery == expectedQuery else { return }
+
+            let fileMatches = (try? resolvedFileResult.get()) ?? []
+            let pluginMatches: [CodexPluginMetadata]
+            switch resolvedPluginResult {
+            case .success(let indexedPlugins):
+                pluginMatches = self.filteredPluginAutocompleteItems(
+                    for: expectedQuery,
+                    indexedPlugins: indexedPlugins
+                )
+            case .failure(let error):
+                if Self.isMethodNotFoundRPCError(error) {
+                    self.unsupportedPluginsAutocompleteRoots.insert(normalizedRoot)
+                }
+                pluginMatches = []
             }
+
+            self.pluginAutocompleteItems = pluginMatches
+            self.fileAutocompleteItems = Array(fileMatches.prefix(self.maxFileAutocompleteItems))
+            self.isFileAutocompleteLoading = false
+            self.isFileAutocompleteVisible = !pluginMatches.isEmpty || !self.fileAutocompleteItems.isEmpty
         }
     }
 
@@ -683,6 +729,37 @@ final class TurnViewModel {
                 TurnComposerMentionedFile(fileName: item.fileName, path: fullPath)
             )
         }
+        resetFileAutocompleteState()
+    }
+
+    // Replaces `@query` with `@plugin` and stores a removable chip for the selected plugin mention.
+    func onSelectPluginAutocomplete(_ plugin: CodexPluginMetadata) {
+        clearComposerReviewSelectionIfNeededForNonReviewContent()
+
+        let invocationToken = plugin.invocationToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !invocationToken.isEmpty else {
+            resetFileAutocompleteState()
+            return
+        }
+
+        if let updatedInput = Self.replacingTrailingFileAutocompleteToken(
+            in: input,
+            with: invocationToken
+        ) {
+            input = updatedInput
+        }
+
+        if !composerMentionedPlugins.contains(where: { $0.normalizedPluginID == plugin.normalizedID }) {
+            composerMentionedPlugins.append(
+                TurnComposerMentionedPlugin(
+                    pluginID: plugin.id,
+                    displayName: plugin.displayName,
+                    invocationToken: invocationToken,
+                    description: plugin.description
+                )
+            )
+        }
+
         resetFileAutocompleteState()
     }
 
@@ -807,6 +884,13 @@ final class TurnViewModel {
         composerMentionedSkills.removeAll(where: { $0.id == id })
     }
 
+    func removeMentionedPlugin(id: String) {
+        if let mention = composerMentionedPlugins.first(where: { $0.id == id }) {
+            input = Self.removeBoundedToken("@\(mention.invocationToken)", from: input)
+        }
+        composerMentionedPlugins.removeAll(where: { $0.id == id })
+    }
+
     func openCamera(codex: CodexService) {
         guard remainingAttachmentSlots > 0 else {
             codex.lastErrorMessage = "You can attach up to \(maxComposerImages) images per message."
@@ -929,7 +1013,7 @@ final class TurnViewModel {
         }
 
         if reviewSelection != nil, hasComposerContentConflictingWithReview {
-            codex.lastErrorMessage = "Clear text, files, skills, and images before starting a code review."
+            codex.lastErrorMessage = "Clear text, files, plugins, skills, and images before starting a code review."
             return
         }
 
@@ -941,6 +1025,7 @@ final class TurnViewModel {
             collaborationMode: isPlanModeArmed ? .plan : nil,
             rawInput: input,
             rawFileMentions: composerMentionedFiles,
+            rawPluginMentions: composerMentionedPlugins,
             rawSkillMentions: composerMentionedSkills,
             rawAttachments: composerAttachments,
             rawSubagentsSelectionArmed: isSubagentsSelectionArmed,
@@ -953,6 +1038,7 @@ final class TurnViewModel {
             collaborationMode: isPlanModeArmed ? .plan : nil,
             rawInput: input,
             rawFileMentions: composerMentionedFiles,
+            rawPluginMentions: composerMentionedPlugins,
             rawSkillMentions: composerMentionedSkills,
             rawAttachments: composerAttachments,
             rawReviewSelection: reviewSelection,
@@ -1367,6 +1453,51 @@ final class TurnViewModel {
 
     // Allows file autocomplete queries to span spaces once they already look like a file or path.
     private static func trailingFileToken(in text: String) -> TurnTrailingToken? {
+        guard let token = trailingAtAutocompleteToken(in: text) else {
+            return nil
+        }
+        let query = token.query
+        guard isAllowedFileAutocompleteQuery(query) else {
+            return nil
+        }
+
+        if query.contains(where: \.isWhitespace) {
+            let looksFileLike = query.contains("/")
+                || query.contains("\\")
+                || query.contains(".")
+            guard looksFileLike else {
+                return nil
+            }
+        }
+
+        return token
+    }
+
+    // Keeps the original file-specific `@` parser available for existing file-token tests.
+    private static func isAllowedFileAutocompleteQuery(_ query: String) -> Bool {
+        TurnFileMentionHeuristics.isAllowedAutocompleteQuery(query)
+    }
+
+    private static func isAllowedPluginAutocompleteQuery(_ query: String) -> Bool {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty,
+              !trimmedQuery.contains(where: \.isWhitespace),
+              trimmedQuery.contains(where: { $0.isLetter }),
+              let firstCharacter = trimmedQuery.first,
+              firstCharacter.isLowercase || firstCharacter.isNumber else {
+            return false
+        }
+
+        return trimmedQuery.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.lowercaseLetters.contains(scalar)
+                || CharacterSet.decimalDigits.contains(scalar)
+                || scalar.value == 45
+                || scalar.value == 95
+        }
+    }
+
+    // Extracts the final `@query` token without deciding whether it belongs to files or plugins.
+    private static func trailingAtAutocompleteToken(in text: String) -> TurnTrailingToken? {
         guard !text.isEmpty,
               let lastCharacter = text.last,
               !lastCharacter.isWhitespace,
@@ -1385,26 +1516,11 @@ final class TurnViewModel {
         let rawQuery = String(text[queryStart..<text.endIndex])
         let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty,
-              !query.contains(where: \.isNewline),
-              isAllowedFileAutocompleteQuery(query) else {
+              !query.contains(where: \.isNewline) else {
             return nil
         }
 
-        if query.contains(where: \.isWhitespace) {
-            let looksFileLike = query.contains("/")
-                || query.contains("\\")
-                || query.contains(".")
-            guard looksFileLike else {
-                return nil
-            }
-        }
-
         return TurnTrailingToken(query: query, tokenRange: triggerIndex..<text.endIndex)
-    }
-
-    // Allows flexible file aliases while keeping common Swift attributes out of file search.
-    private static func isAllowedFileAutocompleteQuery(_ query: String) -> Bool {
-        TurnFileMentionHeuristics.isAllowedAutocompleteQuery(query)
     }
 
     // Shared parser for final-token autocomplete triggers (`@`, `$`).
@@ -1591,6 +1707,67 @@ final class TurnViewModel {
             || message.contains("code -32601")
     }
 
+    private func fetchFileAutocompleteMatches(
+        query: String,
+        codex: CodexService,
+        roots: [String],
+        cancellationToken: String
+    ) async -> Result<[CodexFuzzyFileMatch], Error> {
+        do {
+            let matches = try await codex.fuzzyFileSearch(
+                query: query,
+                roots: roots,
+                cancellationToken: cancellationToken
+            )
+            return .success(matches)
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func fetchPluginAutocompleteIndex(
+        codex: CodexService,
+        root: String
+    ) async -> Result<[TurnPluginSearchIndexEntry], Error> {
+        if unsupportedPluginsAutocompleteRoots.contains(root),
+           cachedPluginSearchIndexByRoot[root] == nil {
+            return .success([])
+        }
+
+        if let cachedIndex = cachedPluginSearchIndexByRoot[root] {
+            return .success(cachedIndex)
+        }
+
+        do {
+            let listedPlugins = try await codex.listPlugins(cwds: [root], forceReload: false)
+            let indexedPlugins = listedPlugins
+                .filter { $0.installed && $0.enabled }
+                .map(TurnPluginSearchIndexEntry.init(plugin:))
+            cachedPluginSearchIndexByRoot[root] = indexedPlugins
+            return .success(indexedPlugins)
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func filteredPluginAutocompleteItems(
+        for query: String,
+        indexedPlugins: [TurnPluginSearchIndexEntry]
+    ) -> [CodexPluginMetadata] {
+        let needle = query.lowercased()
+        let filtered = indexedPlugins
+            .filter { $0.searchBlob.contains(needle) }
+            .sorted { lhs, rhs in
+                if lhs.matchRank(for: needle) == rhs.matchRank(for: needle) {
+                    return lhs.plugin.displayName.localizedCaseInsensitiveCompare(rhs.plugin.displayName) == .orderedAscending
+                }
+                return lhs.matchRank(for: needle) < rhs.matchRank(for: needle)
+            }
+            .map(\.plugin)
+
+        return Array(filtered.prefix(maxPluginAutocompleteItems))
+    }
+
     // Filters pre-indexed skills using a single normalized search blob to reduce per-keystroke work.
     private func filteredSkillAutocompleteItems(
         for query: String,
@@ -1703,6 +1880,7 @@ final class TurnViewModel {
     private func restoreComposerState(from pendingSend: PendingTurnSend) {
         input = pendingSend.rawInput
         composerMentionedFiles = pendingSend.rawFileMentions
+        composerMentionedPlugins = pendingSend.rawPluginMentions
         composerMentionedSkills = pendingSend.rawSkillMentions
         composerAttachments = pendingSend.rawAttachments
         composerReviewSelection = pendingSend.rawReviewSelection
@@ -1730,6 +1908,7 @@ final class TurnViewModel {
     private func restoreComposerState(from draft: QueuedTurnDraft) {
         input = draft.rawInput
         composerMentionedFiles = draft.rawFileMentions
+        composerMentionedPlugins = draft.rawPluginMentions
         composerMentionedSkills = draft.rawSkillMentions
         composerAttachments = draft.rawAttachments
         composerReviewSelection = nil
@@ -1797,6 +1976,7 @@ final class TurnViewModel {
     private func resetFileAutocompleteState() {
         fileAutocompleteDebounceTask?.cancel()
         fileAutocompleteDebounceTask = nil
+        pluginAutocompleteItems = []
         fileAutocompleteItems = []
         isFileAutocompleteVisible = false
         isFileAutocompleteLoading = false
@@ -1902,6 +2082,16 @@ final class TurnViewModel {
     // Replaces inline `@filename` with `@fullpath` for each mentioned file.
     private func buildPayloadWithMentions() -> String {
         var text = input
+        var pluginPlaceholders: [String: String] = [:]
+
+        if !composerMentionedPlugins.isEmpty {
+            for mention in composerMentionedPlugins {
+                let placeholder = "__codex_plugin_mention__\(mention.normalizedPluginID.hashValue)__"
+                let token = "@\(mention.invocationToken)"
+                text = Self.replaceBoundedToken(token, with: placeholder, in: text)
+                pluginPlaceholders[placeholder] = token
+            }
+        }
 
         if !composerMentionedFiles.isEmpty {
             let ambiguousKeys = Self.ambiguousFileNameAliasKeys(in: composerMentionedFiles)
@@ -1915,6 +2105,10 @@ final class TurnViewModel {
                     allowFileNameAliases: allowFileNameAliases
                 )
             }
+        }
+
+        for (placeholder, token) in pluginPlaceholders {
+            text = text.replacingOccurrences(of: placeholder, with: token)
         }
 
         return Self.applyingSubagentsSelection(
@@ -2164,6 +2358,18 @@ struct TurnComposerMentionedFile: Identifiable, Equatable {
     let path: String
 }
 
+struct TurnComposerMentionedPlugin: Identifiable, Equatable {
+    let id = UUID().uuidString
+    let pluginID: String
+    let displayName: String
+    let invocationToken: String
+    let description: String?
+
+    var normalizedPluginID: String {
+        pluginID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
 struct TurnComposerMentionedSkill: Identifiable, Equatable {
     let id = UUID().uuidString
     let name: String
@@ -2199,6 +2405,48 @@ private struct TurnSkillSearchIndexEntry: Equatable {
         } else {
             self.searchBlob = "\(name)\n\(description)"
         }
+    }
+}
+
+private struct TurnPluginSearchIndexEntry: Equatable {
+    let plugin: CodexPluginMetadata
+    let searchBlob: String
+    private let exactNeedles: [String]
+    private let prefixNeedles: [String]
+
+    init(plugin: CodexPluginMetadata) {
+        self.plugin = plugin
+
+        let normalizedID = plugin.normalizedID
+        let normalizedName = plugin.normalizedName ?? ""
+        let invocationToken = plugin.invocationToken.lowercased()
+        let description = plugin.description?.lowercased() ?? ""
+        let source = plugin.source?.lowercased() ?? ""
+        let marketplace = plugin.marketplace?.lowercased() ?? ""
+        self.exactNeedles = [invocationToken, normalizedID, normalizedName].filter { !$0.isEmpty }
+        self.prefixNeedles = exactNeedles
+        self.searchBlob = [
+            invocationToken,
+            normalizedID,
+            normalizedName,
+            description,
+            source,
+            marketplace,
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n")
+    }
+
+    func matchRank(for query: String) -> Int {
+        if exactNeedles.contains(query) {
+            return 0
+        }
+
+        if prefixNeedles.contains(where: { $0.hasPrefix(query) }) {
+            return 1
+        }
+
+        return 2
     }
 }
 

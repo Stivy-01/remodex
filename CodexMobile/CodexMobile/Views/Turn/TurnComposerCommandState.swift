@@ -203,6 +203,7 @@ enum TurnComposerCommandLogic {
     static func hasContentConflictingWithReview(
         trimmedInput: String,
         mentionedFileCount: Int,
+        mentionedPluginCount: Int,
         mentionedSkillCount: Int,
         attachmentCount: Int,
         hasSubagentsSelection: Bool
@@ -210,6 +211,7 @@ enum TurnComposerCommandLogic {
         let draftText = removingTrailingSlashCommandToken(in: trimmedInput) ?? trimmedInput
         return !draftText.isEmpty
             || mentionedFileCount > 0
+            || mentionedPluginCount > 0
             || mentionedSkillCount > 0
             || attachmentCount > 0
             || hasSubagentsSelection
@@ -270,6 +272,7 @@ enum TurnComposerCommandLogic {
     static func canOfferForkSlashCommand(
         in text: String,
         mentionedFileCount: Int = 0,
+        mentionedPluginCount: Int = 0,
         mentionedSkillCount: Int = 0,
         attachmentCount: Int = 0,
         hasReviewSelection: Bool = false,
@@ -286,6 +289,7 @@ enum TurnComposerCommandLogic {
 
         return trimmedRemainingDraft.isEmpty
             && mentionedFileCount == 0
+            && mentionedPluginCount == 0
             && mentionedSkillCount == 0
             && attachmentCount == 0
             && !hasReviewSelection

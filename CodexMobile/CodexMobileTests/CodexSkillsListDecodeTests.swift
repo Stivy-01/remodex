@@ -145,6 +145,85 @@ final class CodexSkillsListDecodeTests: XCTestCase {
         XCTAssertEqual(skills?.first?.scope, "global")
     }
 
+    func testDecodePluginListParsesBucketedDataShape() {
+        let service = makeService()
+        let result: JSONValue = .object([
+            "data": .array([
+                .object([
+                    "cwd": .string("/Users/me/work/repo"),
+                    "plugins": .array([
+                        .object([
+                            "id": .string("remodex-tools"),
+                            "name": .string("remodex-tools"),
+                            "description": .string("Useful local tools"),
+                            "installed": .bool(true),
+                            "enabled": .bool(true),
+                            "source": .string("local"),
+                            "marketplace": .string("repo"),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ])
+
+        let plugins = service.decodePluginMetadata(from: result)
+
+        XCTAssertEqual(plugins?.count, 1)
+        XCTAssertEqual(plugins?.first?.id, "remodex-tools")
+        XCTAssertEqual(plugins?.first?.displayName, "remodex-tools")
+        XCTAssertEqual(plugins?.first?.installed, true)
+        XCTAssertEqual(plugins?.first?.enabled, true)
+        XCTAssertEqual(plugins?.first?.source, "local")
+        XCTAssertEqual(plugins?.first?.marketplace, "repo")
+    }
+
+    func testDecodePluginListParsesFlatPluginsShape() {
+        let service = makeService()
+        let result: JSONValue = .object([
+            "plugins": .array([
+                .object([
+                    "plugin_id": .string("repo-tools"),
+                    "description": .string("Repo-local plugin"),
+                    "installed": .bool(true),
+                    "enabled": .bool(false),
+                    "source_type": .string("marketplace"),
+                ]),
+            ]),
+        ])
+
+        let plugins = service.decodePluginMetadata(from: result)
+
+        XCTAssertEqual(plugins?.count, 1)
+        XCTAssertEqual(plugins?.first?.id, "repo-tools")
+        XCTAssertEqual(plugins?.first?.displayName, "repo-tools")
+        XCTAssertEqual(plugins?.first?.enabled, false)
+        XCTAssertEqual(plugins?.first?.source, "marketplace")
+    }
+
+    func testDecodePluginReadParsesNestedPluginAndSkills() {
+        let service = makeService()
+        let result: JSONValue = .object([
+            "plugin": .object([
+                "id": .string("remodex-tools"),
+                "name": .string("remodex-tools"),
+                "description": .string("Useful local tools"),
+                "skills": .array([
+                    .object([
+                        "name": .string("check-code"),
+                        "description": .string("Audit code changes"),
+                        "path": .string("/Users/me/.codex/skills/check-code/SKILL.md"),
+                        "enabled": .bool(true),
+                    ]),
+                ]),
+            ]),
+        ])
+
+        let details = service.decodePluginDetails(from: result)
+
+        XCTAssertEqual(details?.plugin.id, "remodex-tools")
+        XCTAssertEqual(details?.skills.map(\.name), ["check-code"])
+    }
+
     private func makeService() -> CodexService {
         let suiteName = "CodexSkillsListDecodeTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard

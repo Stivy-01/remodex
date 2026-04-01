@@ -398,6 +398,78 @@ extension CodexService {
         return dedupedByName
     }
 
+    // Loads installed plugins for one or more roots while tolerating app-server shape drift.
+    func listPlugins(
+        cwds: [String]?,
+        forceReload: Bool = false
+    ) async throws -> [CodexPluginMetadata] {
+        let normalizedCwds = (cwds ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var paramsObject: RPCObject = [:]
+        if !normalizedCwds.isEmpty {
+            paramsObject["cwds"] = .array(normalizedCwds.map { .string($0) })
+        }
+        if forceReload {
+            paramsObject["forceReload"] = .bool(true)
+        }
+
+        let response: RPCMessage
+        do {
+            response = try await sendRequest(method: "plugin/list", params: .object(paramsObject))
+        } catch {
+            guard !normalizedCwds.isEmpty,
+                  shouldRetryPluginsListWithCwdFallback(error) else {
+                throw error
+            }
+
+            var fallbackParams: RPCObject = ["cwd": .string(normalizedCwds[0])]
+            if forceReload {
+                fallbackParams["forceReload"] = .bool(true)
+            }
+            response = try await sendRequest(method: "plugin/list", params: .object(fallbackParams))
+        }
+
+        guard let decodedPlugins = decodePluginMetadata(from: response.result) else {
+            throw CodexServiceError.invalidResponse("plugin/list response missing result.data[].plugins")
+        }
+
+        let dedupedByID = Dictionary(grouping: decodedPlugins) { $0.normalizedID }
+            .compactMap { _, bucket -> CodexPluginMetadata? in
+                bucket.first(where: { $0.installed && $0.enabled })
+                    ?? bucket.first(where: { $0.installed })
+                    ?? bucket.first
+            }
+            .filter { !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { lhs, rhs in
+                lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+            }
+        return dedupedByID
+    }
+
+    // Reads one plugin detail payload and normalizes optional bundled-skill metadata.
+    func readPlugin(
+        id: String,
+        cwd: String? = nil
+    ) async throws -> CodexPluginDetails {
+        let normalizedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedID.isEmpty else {
+            throw CodexServiceError.invalidInput("Plugin id is required.")
+        }
+
+        var paramsObject: RPCObject = ["id": .string(normalizedID)]
+        if let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !normalizedCWD.isEmpty {
+            paramsObject["cwd"] = .string(normalizedCWD)
+        }
+
+        let response = try await sendRequest(method: "plugin/read", params: .object(paramsObject))
+        guard let details = decodePluginDetails(from: response.result) else {
+            throw CodexServiceError.invalidResponse("plugin/read response missing plugin detail payload")
+        }
+        return details
+    }
+
     // Accepts the latest pending approval request.
     func approvePendingRequest(forSession: Bool = false) async throws {
         guard let request = pendingApproval else {
@@ -1270,7 +1342,109 @@ extension CodexService {
         return hasSkillContainer ? collectedSkills : nil
     }
 
+    // Parses plugin/list payloads from bucketed `data[].plugins`, direct `plugins`, or singleton `plugin` shapes.
+    func decodePluginMetadata(from result: JSONValue?) -> [CodexPluginMetadata]? {
+        guard let resultObject = result?.objectValue else {
+            return nil
+        }
+
+        var collectedPlugins: [CodexPluginMetadata] = []
+        var hasPluginContainer = false
+
+        if let dataItems = resultObject["data"]?.arrayValue {
+            hasPluginContainer = true
+            for item in dataItems {
+                guard let itemObject = item.objectValue else {
+                    continue
+                }
+                if let pluginsValue = itemObject["plugins"],
+                   let decodedPlugins = decodeModel([CodexPluginMetadata].self, from: pluginsValue) {
+                    collectedPlugins.append(contentsOf: decodedPlugins)
+                    continue
+                }
+
+                if let pluginValue = itemObject["plugin"],
+                   let decodedPlugin = decodeModel(CodexPluginMetadata.self, from: pluginValue) {
+                    collectedPlugins.append(decodedPlugin)
+                    continue
+                }
+
+                if let decodedPlugin = decodeModel(CodexPluginMetadata.self, from: item) {
+                    collectedPlugins.append(decodedPlugin)
+                }
+            }
+
+            if collectedPlugins.isEmpty,
+               let decodedPlugins = decodeModel([CodexPluginMetadata].self, from: .array(dataItems)) {
+                collectedPlugins.append(contentsOf: decodedPlugins)
+            }
+        }
+
+        if collectedPlugins.isEmpty,
+           let pluginsValue = resultObject["plugins"],
+           let decodedPlugins = decodeModel([CodexPluginMetadata].self, from: pluginsValue) {
+            hasPluginContainer = true
+            collectedPlugins.append(contentsOf: decodedPlugins)
+        } else if resultObject["plugins"] != nil {
+            hasPluginContainer = true
+        }
+
+        if collectedPlugins.isEmpty,
+           let pluginValue = resultObject["plugin"],
+           let decodedPlugin = decodeModel(CodexPluginMetadata.self, from: pluginValue) {
+            hasPluginContainer = true
+            collectedPlugins.append(decodedPlugin)
+        } else if resultObject["plugin"] != nil {
+            hasPluginContainer = true
+        }
+
+        return hasPluginContainer ? collectedPlugins : nil
+    }
+
+    // Parses plugin/read payloads while tolerating nested `plugin` containers and optional bundled skills.
+    func decodePluginDetails(from result: JSONValue?) -> CodexPluginDetails? {
+        guard let resultObject = result?.objectValue else {
+            return nil
+        }
+
+        let firstDataObject = resultObject["data"]?.arrayValue?.first?.objectValue
+        let pluginValue = resultObject["plugin"]
+            ?? firstDataObject?["plugin"]
+            ?? resultObject["data"]?.arrayValue?.first
+
+        guard let pluginValue,
+              let plugin = decodeModel(CodexPluginMetadata.self, from: pluginValue) else {
+            return nil
+        }
+
+        let skillsValue = resultObject["skills"]
+            ?? pluginValue.objectValue?["skills"]
+            ?? firstDataObject?["skills"]
+        let skills = skillsValue.flatMap { decodeModel([CodexSkillMetadata].self, from: $0) } ?? []
+
+        return CodexPluginDetails(plugin: plugin, skills: skills)
+    }
+
     func shouldRetrySkillsListWithCwdFallback(_ error: Error) -> Bool {
+        guard let serviceError = error as? CodexServiceError,
+              case .rpcError(let rpcError) = serviceError else {
+            return false
+        }
+
+        guard rpcError.code == -32600 || rpcError.code == -32602 else {
+            return false
+        }
+
+        let message = rpcError.message.lowercased()
+        return message.contains("invalid")
+            || message.contains("unknown field")
+            || message.contains("unrecognized field")
+            || message.contains("missing field")
+            || message.contains("expected")
+            || message.contains("cwds")
+    }
+
+    func shouldRetryPluginsListWithCwdFallback(_ error: Error) -> Bool {
         guard let serviceError = error as? CodexServiceError,
               case .rpcError(let rpcError) = serviceError else {
             return false

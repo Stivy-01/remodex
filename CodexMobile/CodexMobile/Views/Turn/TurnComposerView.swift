@@ -70,12 +70,14 @@ struct TurnComposerView: View {
     let onInputChangedForSkillAutocomplete: (String) -> Void
     let onInputChangedForSlashCommandAutocomplete: (String) -> Void
     let onSelectFileAutocomplete: (CodexFuzzyFileMatch) -> Void
+    let onSelectPluginAutocomplete: (CodexPluginMetadata) -> Void
     let onSelectSkillAutocomplete: (CodexSkillMetadata) -> Void
     let onSelectSlashCommand: (TurnComposerSlashCommand) -> Void
     let onSelectCodeReviewTarget: (TurnComposerReviewTarget) -> Void
     let onSelectForkDestination: (TurnComposerForkDestination) -> Void
     let onCloseSlashCommandPanel: () -> Void
     let onRemoveMentionedFile: (String) -> Void
+    let onRemoveMentionedPlugin: (String) -> Void
     let onRemoveMentionedSkill: (String) -> Void
     let onRemoveComposerReviewSelection: () -> Void
     let onRemoveComposerSubagentsSelection: () -> Void
@@ -106,6 +108,7 @@ struct TurnComposerView: View {
                     state: accessoryState,
                     onRemoveAttachment: onRemoveAttachment,
                     onRemoveMentionedFile: onRemoveMentionedFile,
+                    onRemoveMentionedPlugin: onRemoveMentionedPlugin,
                     onRemoveMentionedSkill: onRemoveMentionedSkill,
                     onRemoveComposerReviewSelection: onRemoveComposerReviewSelection,
                     onRemoveComposerSubagentsSelection: onRemoveComposerSubagentsSelection
@@ -113,7 +116,7 @@ struct TurnComposerView: View {
 
                 ZStack(alignment: .topLeading) {
                     if input.isEmpty {
-                        Text("Ask anything... @files, $skills, /commands")
+                        Text("Ask anything... @files + plugins, $skills, /commands")
                             .font(AppFont.system(size: 15))
                             .foregroundStyle(Color(.placeholderText))
                             .allowsHitTesting(false)
@@ -189,6 +192,7 @@ struct TurnComposerView: View {
                             TurnComposerAutocompletePanels(
                                 state: autocompleteState,
                                 onSelectFileAutocomplete: onSelectFileAutocomplete,
+                                onSelectPluginAutocomplete: onSelectPluginAutocomplete,
                                 onSelectSkillAutocomplete: onSelectSkillAutocomplete,
                                 onSelectSlashCommand: onSelectSlashCommand,
                                 onSelectCodeReviewTarget: onSelectCodeReviewTarget,
@@ -246,6 +250,7 @@ struct TurnComposerView: View {
 private struct TurnComposerAutocompletePanels: View {
     let state: TurnComposerAutocompleteState
     let onSelectFileAutocomplete: (CodexFuzzyFileMatch) -> Void
+    let onSelectPluginAutocomplete: (CodexPluginMetadata) -> Void
     let onSelectSkillAutocomplete: (CodexSkillMetadata) -> Void
     let onSelectSlashCommand: (TurnComposerSlashCommand) -> Void
     let onSelectCodeReviewTarget: (TurnComposerReviewTarget) -> Void
@@ -256,10 +261,12 @@ private struct TurnComposerAutocompletePanels: View {
         VStack(alignment: .leading, spacing: 0) {
             if state.isFileAutocompleteVisible {
                 FileAutocompletePanel(
-                    items: state.fileAutocompleteItems,
+                    pluginItems: state.pluginAutocompleteItems,
+                    fileItems: state.fileAutocompleteItems,
                     isLoading: state.isFileAutocompleteLoading,
                     query: state.fileAutocompleteQuery,
-                    onSelect: onSelectFileAutocomplete
+                    onSelectFile: onSelectFileAutocomplete,
+                    onSelectPlugin: onSelectPluginAutocomplete
                 )
             }
 
@@ -337,6 +344,7 @@ private struct TurnComposerAccessorySection: View {
     let state: TurnComposerAccessoryState
     let onRemoveAttachment: (String) -> Void
     let onRemoveMentionedFile: (String) -> Void
+    let onRemoveMentionedPlugin: (String) -> Void
     let onRemoveMentionedSkill: (String) -> Void
     let onRemoveComposerReviewSelection: () -> Void
     let onRemoveComposerSubagentsSelection: () -> Void
@@ -366,6 +374,21 @@ private struct TurnComposerAccessorySection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
+            }
+
+            if state.showsMentionedPlugins {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(state.composerMentionedPlugins) { plugin in
+                            PluginMentionChip(pluginName: plugin.displayName) {
+                                onRemoveMentionedPlugin(plugin.id)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
             }
 
             if state.showsMentionedSkills {
@@ -451,6 +474,7 @@ private struct QueuedDraftsPanelPreviewWrapper: View {
                     steeringDraftID: nil,
                     composerAttachments: [],
                     composerMentionedFiles: [],
+                    composerMentionedPlugins: [],
                     composerMentionedSkills: [],
                     composerReviewSelection: nil,
                     isSubagentsSelectionArmed: true,
@@ -460,6 +484,7 @@ private struct QueuedDraftsPanelPreviewWrapper: View {
                 ),
                 autocompleteState: TurnComposerAutocompleteState(
                     availableSlashCommands: TurnComposerSlashCommand.allCommands,
+                    pluginAutocompleteItems: [],
                     fileAutocompleteItems: [],
                     isFileAutocompleteVisible: false,
                     isFileAutocompleteLoading: false,
@@ -548,12 +573,14 @@ private struct QueuedDraftsPanelPreviewWrapper: View {
                 onInputChangedForSkillAutocomplete: { _ in },
                 onInputChangedForSlashCommandAutocomplete: { _ in },
                 onSelectFileAutocomplete: { _ in },
+                onSelectPluginAutocomplete: { _ in },
                 onSelectSkillAutocomplete: { _ in },
                 onSelectSlashCommand: { _ in },
                 onSelectCodeReviewTarget: { _ in },
                 onSelectForkDestination: { _ in },
                 onCloseSlashCommandPanel: {},
                 onRemoveMentionedFile: { _ in },
+                onRemoveMentionedPlugin: { _ in },
                 onRemoveMentionedSkill: { _ in },
                 onRemoveComposerReviewSelection: {},
                 onRemoveComposerSubagentsSelection: {},

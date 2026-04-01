@@ -50,6 +50,7 @@ struct TurnComposerHostView: View {
                 allowsForkCommand: TurnComposerCommandLogic.canOfferForkSlashCommand(
                     in: viewModel.input,
                     mentionedFileCount: viewModel.composerMentionedFiles.count,
+                    mentionedPluginCount: viewModel.composerMentionedPlugins.count,
                     mentionedSkillCount: viewModel.composerMentionedSkills.count,
                     attachmentCount: viewModel.composerAttachments.count,
                     hasReviewSelection: viewModel.composerReviewSelection != nil,
@@ -58,6 +59,7 @@ struct TurnComposerHostView: View {
                 )
                     && !availableForkDestinations.isEmpty
             ),
+            pluginAutocompleteItems: viewModel.pluginAutocompleteItems,
             fileAutocompleteItems: viewModel.fileAutocompleteItems,
             isFileAutocompleteVisible: viewModel.isFileAutocompleteVisible,
             isFileAutocompleteLoading: viewModel.isFileAutocompleteLoading,
@@ -81,6 +83,7 @@ struct TurnComposerHostView: View {
             steeringDraftID: viewModel.steeringDraftID,
             composerAttachments: viewModel.composerAttachments,
             composerMentionedFiles: viewModel.composerMentionedFiles,
+            composerMentionedPlugins: viewModel.composerMentionedPlugins,
             composerMentionedSkills: viewModel.composerMentionedSkills,
             composerReviewSelection: viewModel.composerReviewSelection,
             isSubagentsSelectionArmed: viewModel.isSubagentsSelectionArmed,
@@ -179,6 +182,7 @@ struct TurnComposerHostView: View {
                 )
             },
             onSelectFileAutocomplete: viewModel.onSelectFileAutocomplete,
+            onSelectPluginAutocomplete: viewModel.onSelectPluginAutocomplete,
             onSelectSkillAutocomplete: viewModel.onSelectSkillAutocomplete,
             onSelectSlashCommand: { command in
                 switch command {
@@ -211,6 +215,7 @@ struct TurnComposerHostView: View {
             },
             onCloseSlashCommandPanel: viewModel.closeSlashCommandPanel,
             onRemoveMentionedFile: viewModel.removeMentionedFile,
+            onRemoveMentionedPlugin: viewModel.removeMentionedPlugin,
             onRemoveMentionedSkill: viewModel.removeMentionedSkill,
             onRemoveComposerReviewSelection: viewModel.clearComposerReviewSelection,
             onRemoveComposerSubagentsSelection: viewModel.clearSubagentsSelection,

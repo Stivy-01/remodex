@@ -38,8 +38,8 @@ final class TurnFileAutocompleteTokenTests: XCTestCase {
         XCTAssertNil(TurnViewModel.trailingFileAutocompleteToken(in: "paste @t3tools/contracts:build"))
     }
 
-    func testTrailingTokenDoesNotParseBareTerminalHandle() {
-        XCTAssertNil(TurnViewModel.trailingFileAutocompleteToken(in: "paste @remodex"))
+    func testTrailingTokenDoesNotParseBarePluginHandle() {
+        XCTAssertNil(TurnViewModel.trailingFileAutocompleteToken(in: "use @remodex"))
     }
 
     func testTrailingTokenStillParsesLineReferencedFile() {
@@ -52,6 +52,10 @@ final class TurnFileAutocompleteTokenTests: XCTestCase {
         let token = TurnViewModel.trailingFileAutocompleteToken(in: "check @Makefile")
 
         XCTAssertEqual(token?.query, "Makefile")
+    }
+
+    func testTrailingTokenDoesNotParseSluggedPluginHandle() {
+        XCTAssertNil(TurnViewModel.trailingFileAutocompleteToken(in: "use @repo-tools"))
     }
 
     func testRemovingTrailingLineColumnSuffixKeepsBasePath() {

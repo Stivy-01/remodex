@@ -247,6 +247,207 @@ final class TurnViewModelQueueTests: XCTestCase {
         XCTAssertEqual(message.fileMentions, ["CodexMobile/Views/Turn/TurnView.swift"])
     }
 
+    func testSelectPluginAutocompleteStoresTextAndChip() {
+        let viewModel = makeViewModel()
+        viewModel.input = "Use @remo"
+
+        viewModel.onSelectPluginAutocomplete(
+            CodexPluginMetadata(
+                id: "remodex-tools",
+                name: "remodex-tools",
+                description: "Useful local tools",
+                path: nil,
+                enabled: true,
+                installed: true,
+                source: "local",
+                marketplace: "repo",
+                scope: nil,
+                version: nil
+            )
+        )
+
+        XCTAssertEqual(viewModel.input, "Use @remodex-tools ")
+        XCTAssertEqual(viewModel.composerMentionedPlugins.map(\.pluginID), ["remodex-tools"])
+        XCTAssertEqual(viewModel.composerMentionedPlugins.map(\.invocationToken), ["remodex-tools"])
+    }
+
+    func testSelectPluginAutocompleteUsesCanonicalPluginIDNotDisplayName() {
+        let viewModel = makeViewModel()
+        viewModel.input = "Use @remo"
+
+        viewModel.onSelectPluginAutocomplete(
+            CodexPluginMetadata(
+                id: "remodex-tools",
+                name: "Remodex Tools",
+                description: "Useful local tools",
+                path: nil,
+                enabled: true,
+                installed: true,
+                source: "local",
+                marketplace: "repo",
+                scope: nil,
+                version: nil
+            )
+        )
+
+        XCTAssertEqual(viewModel.input, "Use @remodex-tools ")
+        XCTAssertEqual(viewModel.composerMentionedPlugins.map(\.invocationToken), ["remodex-tools"])
+    }
+
+    func testAtAutocompleteReturnsPluginAndFileSections() async {
+        let service = makeService()
+        service.isConnected = true
+        service.requestTransportOverride = { method, _ in
+            switch method {
+            case "fuzzyFileSearch":
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object([
+                        "files": .array([
+                            .object([
+                                "root": .string("/Users/me/work/repo"),
+                                "path": .string("CodexMobile/Views/Turn/TurnView.swift"),
+                                "fileName": .string("TurnView.swift"),
+                                "score": .double(0.98),
+                                "indices": .array([]),
+                            ]),
+                        ]),
+                    ]),
+                    includeJSONRPC: false
+                )
+            case "plugin/list":
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object([
+                        "plugins": .array([
+                            .object([
+                                "id": .string("remodex-tools"),
+                                "name": .string("remodex-tools"),
+                                "description": .string("Useful local tools"),
+                                "installed": .bool(true),
+                                "enabled": .bool(true),
+                            ]),
+                        ]),
+                    ]),
+                    includeJSONRPC: false
+                )
+            default:
+                XCTFail("Unexpected method \(method)")
+                return RPCMessage(id: .string(UUID().uuidString), result: .object([:]), includeJSONRPC: false)
+            }
+        }
+
+        let viewModel = makeViewModel()
+        let thread = makeThread(id: "thread-autocomplete")
+
+        viewModel.onInputChangedForFileAutocomplete(
+            "Open @remo",
+            codex: service,
+            thread: thread,
+            activeTurnID: nil
+        )
+        await waitForFileAutocomplete(viewModel)
+
+        XCTAssertEqual(viewModel.pluginAutocompleteItems.map(\.id), ["remodex-tools"])
+        XCTAssertEqual(viewModel.fileAutocompleteItems.map(\.fileName), ["TurnView.swift"])
+        XCTAssertTrue(viewModel.isFileAutocompleteVisible)
+    }
+
+    func testAtAutocompleteFallsBackToFilesWhenPluginMethodsAreUnsupported() async {
+        let service = makeService()
+        service.isConnected = true
+        service.requestTransportOverride = { method, _ in
+            switch method {
+            case "fuzzyFileSearch":
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object([
+                        "files": .array([
+                            .object([
+                                "root": .string("/Users/me/work/repo"),
+                                "path": .string("CodexMobile/Views/Turn/TurnView.swift"),
+                                "fileName": .string("TurnView.swift"),
+                                "score": .double(0.98),
+                                "indices": .array([]),
+                            ]),
+                        ]),
+                    ]),
+                    includeJSONRPC: false
+                )
+            case "plugin/list":
+                throw CodexServiceError.rpcError(RPCError(code: -32601, message: "Method not found"))
+            default:
+                XCTFail("Unexpected method \(method)")
+                return RPCMessage(id: .string(UUID().uuidString), result: .object([:]), includeJSONRPC: false)
+            }
+        }
+
+        let viewModel = makeViewModel()
+        let thread = makeThread(id: "thread-autocomplete")
+
+        viewModel.onInputChangedForFileAutocomplete(
+            "Open @turn",
+            codex: service,
+            thread: thread,
+            activeTurnID: nil
+        )
+        await waitForFileAutocomplete(viewModel)
+
+        XCTAssertTrue(viewModel.pluginAutocompleteItems.isEmpty)
+        XCTAssertEqual(viewModel.fileAutocompleteItems.map(\.fileName), ["TurnView.swift"])
+        XCTAssertTrue(viewModel.unsupportedPluginsAutocompleteRoots.contains("/Users/me/work/repo"))
+    }
+
+    func testAtAutocompleteDoesNotOpenForOrdinaryHandleWithoutMatches() async {
+        let service = makeService()
+        service.isConnected = true
+        service.requestTransportOverride = { method, _ in
+            switch method {
+            case "plugin/list":
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object(["plugins": .array([])]),
+                    includeJSONRPC: false
+                )
+            default:
+                XCTFail("Unexpected method \(method)")
+                return RPCMessage(id: .string(UUID().uuidString), result: .object([:]), includeJSONRPC: false)
+            }
+        }
+
+        let viewModel = makeViewModel()
+        let thread = makeThread(id: "thread-autocomplete")
+
+        viewModel.onInputChangedForFileAutocomplete(
+            "Ping @john",
+            codex: service,
+            thread: thread,
+            activeTurnID: nil
+        )
+        await waitForFileAutocomplete(viewModel)
+
+        XCTAssertTrue(viewModel.pluginAutocompleteItems.isEmpty)
+        XCTAssertTrue(viewModel.fileAutocompleteItems.isEmpty)
+        XCTAssertFalse(viewModel.isFileAutocompleteVisible)
+    }
+
+    func testRemoveMentionedPluginRemovesChipAndToken() {
+        let viewModel = makeViewModel()
+        let plugin = TurnComposerMentionedPlugin(
+            pluginID: "remodex-tools",
+            displayName: "Remodex Tools",
+            invocationToken: "remodex-tools",
+            description: "Useful local tools"
+        )
+        viewModel.input = "Use @remodex-tools please"
+        viewModel.composerMentionedPlugins = [plugin]
+
+        viewModel.removeMentionedPlugin(id: plugin.id)
+
+        XCTAssertEqual(viewModel.input, "Use please")
+        XCTAssertTrue(viewModel.composerMentionedPlugins.isEmpty)
+    }
+
     func testSendTurnDoesNotStoreManualFileLikeTextAsConfirmedMention() async {
         let service = makeService()
         service.isConnected = true
@@ -269,6 +470,47 @@ final class TurnViewModelQueueTests: XCTestCase {
         let message = try XCTUnwrap(service.messagesByThread["thread-queue"]?.last)
         XCTAssertEqual(message.text, "Please inspect @CodexMobile/Views/Turn/TurnView.swift")
         XCTAssertTrue(message.fileMentions.isEmpty)
+    }
+
+    func testSendTurnKeepsPluginMentionWhenFileAliasWouldOtherwiseCollide() async {
+        let service = makeService()
+        service.isConnected = true
+        service.resumedThreadIDs.insert("thread-queue")
+        service.requestTransportOverride = { method, _ in
+            XCTAssertEqual(method, "turn/start")
+            return RPCMessage(
+                id: .string(UUID().uuidString),
+                result: .object(["turnId": .string("turn-new")]),
+                includeJSONRPC: false
+            )
+        }
+
+        let viewModel = makeViewModel()
+        viewModel.input = "Use @remodex-tools and inspect @remodex-tools.swift"
+        viewModel.composerMentionedPlugins = [
+            TurnComposerMentionedPlugin(
+                pluginID: "remodex-tools",
+                displayName: "Remodex Tools",
+                invocationToken: "remodex-tools",
+                description: "Useful local tools"
+            )
+        ]
+        viewModel.composerMentionedFiles = [
+            TurnComposerMentionedFile(
+                fileName: "remodex-tools.swift",
+                path: "CodexMobile/Views/Turn/remodex-tools.swift"
+            )
+        ]
+
+        viewModel.sendTurn(codex: service, threadID: "thread-queue")
+        await waitForSendCompletion(viewModel)
+
+        let message = try XCTUnwrap(service.messagesByThread["thread-queue"]?.last)
+        XCTAssertEqual(
+            message.text,
+            "Use @remodex-tools and inspect @CodexMobile/Views/Turn/remodex-tools.swift"
+        )
+        XCTAssertEqual(message.fileMentions, ["CodexMobile/Views/Turn/remodex-tools.swift"])
     }
 
     func testFlushQueuePreservesPlanModeFromBusyThreadQueue() async {
@@ -589,6 +831,14 @@ final class TurnViewModelQueueTests: XCTestCase {
                     path: "CodexMobile/Views/Turn/TurnView.swift"
                 )
             ],
+            rawPluginMentions: [
+                TurnComposerMentionedPlugin(
+                    pluginID: "remodex-tools",
+                    displayName: "Remodex Tools",
+                    invocationToken: "remodex-tools",
+                    description: "Useful local tools"
+                )
+            ],
             rawSkillMentions: [
                 TurnComposerMentionedSkill(
                     name: "check-code",
@@ -611,6 +861,7 @@ final class TurnViewModelQueueTests: XCTestCase {
         XCTAssertEqual(service.queuedTurnDraftsByThread["thread-queue"]?.map(\.id), [first.id])
         XCTAssertEqual(viewModel.input, "Please inspect @TurnView.swift")
         XCTAssertEqual(viewModel.composerMentionedFiles.map(\.path), ["CodexMobile/Views/Turn/TurnView.swift"])
+        XCTAssertEqual(viewModel.composerMentionedPlugins.map(\.pluginID), ["remodex-tools"])
         XCTAssertEqual(viewModel.composerMentionedSkills.map(\.name), ["check-code"])
         XCTAssertEqual(viewModel.composerAttachments.count, 1)
         XCTAssertTrue(viewModel.isSubagentsSelectionArmed)
@@ -871,10 +1122,20 @@ final class TurnViewModelQueueTests: XCTestCase {
         }
     }
 
+    private func waitForFileAutocomplete(_ viewModel: TurnViewModel, maxPollCount: Int = 80) async {
+        for _ in 0..<maxPollCount where viewModel.isFileAutocompleteLoading {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
     private func makeViewModel() -> TurnViewModel {
         let viewModel = TurnViewModel()
         Self.retainedViewModels.append(viewModel)
         return viewModel
+    }
+
+    private func makeThread(id: String) -> CodexThread {
+        CodexThread(id: id, cwd: "/Users/me/work/repo")
     }
 
     private func makeService() -> CodexService {
