@@ -404,6 +404,12 @@ final class CodexService {
     var commandExecutionDetailsByItemID: [String: CommandExecutionDetails] = [:]
     // Debounces disk writes while streaming to keep UI responsive.
     var messagePersistenceDebounceTask: Task<Void, Never>?
+    // Coalesces high-frequency assistant deltas into short batches so streaming does not
+    // invalidate SwiftUI state on every token-sized payload.
+    var pendingAssistantDeltaByStreamID: [String: String] = [:]
+    var pendingAssistantDeltaContextByStreamID: [String: (threadId: String, turnId: String, itemId: String?)] = [:]
+    var pendingAssistantDeltaFlushTask: Task<Void, Never>?
+    let assistantDeltaBatchIntervalNanoseconds: UInt64 = 40_000_000
     // Coalesces multiple invalidateAssistantRevertStates() calls within the same run loop tick into one refresh.
     var coalescedRevertRefreshTask: Task<Void, Never>?
     // Dedupes completion payloads when servers omit turn/item identifiers.
