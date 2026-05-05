@@ -38,6 +38,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
+import com.remodex.mobile.ui.design.canvas.CanvasRenderState
+import com.remodex.mobile.ui.design.canvas.CanvasSnapshotViewer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +51,7 @@ fun DesignWorkspaceScreen(
     val uiMode by viewModel.uiMode.collectAsState()
     val generationState by viewModel.generationState.collectAsState()
     val currentDocument by viewModel.currentDocument.collectAsState()
+    val snapshotRenderState by viewModel.snapshotRenderState.collectAsState()
     val selectedNode by viewModel.selectedNode.collectAsState()
     val exportResult by viewModel.exportResult.collectAsState()
     val promptText by viewModel.promptText.collectAsState()
@@ -122,6 +125,8 @@ fun DesignWorkspaceScreen(
                 CanvasArea(
                     document = currentDocument!!,
                     uiMode = uiMode,
+                    snapshotRenderState = snapshotRenderState,
+                    onRefreshSnapshot = viewModel::refreshSnapshot,
                     modifier = Modifier.weight(1f),
                 )
 
@@ -164,6 +169,8 @@ fun DesignWorkspaceScreen(
 private fun CanvasArea(
     document: DesignDocument,
     uiMode: DesignMode,
+    snapshotRenderState: CanvasRenderState,
+    onRefreshSnapshot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -173,60 +180,15 @@ private fun CanvasArea(
         contentAlignment = Alignment.Center,
     ) {
         when (uiMode) {
-            DesignMode.VIEW -> DesignSnapshotViewer(
-                document = document,
+            DesignMode.VIEW -> CanvasSnapshotViewer(
+                state = snapshotRenderState,
+                onRetry = null,
+                onRefreshSnapshot = onRefreshSnapshot,
                 modifier = Modifier.fillMaxSize(),
             )
             DesignMode.EDIT -> DesignEditPlaceholder(
                 modifier = Modifier.fillMaxSize(),
             )
-        }
-    }
-}
-
-@Composable
-private fun DesignSnapshotViewer(
-    document: DesignDocument,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        ),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Icon(
-                    painter = painterResource(LucideR.drawable.lucide_ic_layout_template),
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "Design Preview",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "v${document.version}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                if (document.status == DesignDocumentStatus.OUTDATED_SNAPSHOT) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(onClick = { /* TODO: refresh snapshot */ }) {
-                        Text("Refresh")
-                    }
-                }
-            }
         }
     }
 }
