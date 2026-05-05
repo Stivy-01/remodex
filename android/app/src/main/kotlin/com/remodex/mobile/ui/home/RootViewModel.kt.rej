@@ -1,0 +1,20 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/home/RootViewModel.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/home/RootViewModel.kt	(rejected hunks)
+@@ -80,6 +80,7 @@ class RootViewModel(
+     fun onAppLaunched() {
+         autoReconnectJob?.cancel()
+         autoReconnectJob = viewModelScope.launch {
++            restoreActiveThreadIfNeeded(allowBeforeSessionReady = true)
+             attemptAutoConnectIfNeeded(minIntervalMs = 0L)
+         }
+     }
+@@ -114,8 +115,8 @@ class RootViewModel(
+         reconnectSavedPairingManually()
+     }
+ 
+-    suspend fun restoreActiveThreadIfNeeded() {
+-        if (!repository.isSessionReady.value) return
++    suspend fun restoreActiveThreadIfNeeded(allowBeforeSessionReady: Boolean = false) {
++        if (!allowBeforeSessionReady && !repository.isSessionReady.value) return
+         val pending = AppContainer.consumePendingOpenThreadFromNotification()
+         if (pending != null) {
+             repository.setActiveThreadId(pending)

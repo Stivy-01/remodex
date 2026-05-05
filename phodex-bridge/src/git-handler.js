@@ -16,11 +16,13 @@ const GIT_TIMEOUT_MS = 30_000;
 /** Node defaults maxBuffer to 1 MiB; large repo diffs exceed it ("stdout maxBuffer length exceeded"). */
 const GIT_EXEC_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 const GIT_DRAFT_TIMEOUT_MS = 120_000;
+const GITHUB_CLI_TIMEOUT_MS = 120_000;
 const GIT_DRAFT_PATCH_MAX_BYTES = 80_000;
 const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const DEFAULT_GIT_WRITER_MODEL = "gpt-5.4-mini";
 
 let runStructuredCodexJsonImpl = runStructuredCodexJson;
+let runGitHubCliImpl = runGitHubCli;
 
 function resolveGitWriterModel(rawModel) {
   const trimmed = typeof rawModel === "string" ? rawModel.trim() : "";
@@ -49,7 +51,20 @@ function handleGitRequest(rawMessage, sendResponse, options = {}) {
   const id = parsed.id;
   const params = parsed.params || {};
 
-  handleGitMethod(method, params, options)
+  // Lets long-running git flows push interim progress events to the phone.
+  const sendNotification = (notificationMethod, notificationParams) => {
+    if (typeof notificationMethod !== "string" || !notificationMethod) {
+      return;
+    }
+    sendResponse(JSON.stringify({
+      method: notificationMethod,
+      params: notificationParams ?? {},
+    }));
+  };
+
+  const methodOptions = { ...options, sendNotification };
+
+  handleGitMethod(method, params, methodOptions)
     .then((result) => {
       sendResponse(JSON.stringify({ id, result }));
       if (method === "thread/name/set") {
@@ -87,6 +102,8 @@ async function handleGitMethod(method, params, options = {}) {
   switch (method) {
     case "git/status":
       return gitStatus(cwd);
+    case "git/init":
+      return gitInit(cwd);
     case "git/diff":
       return gitDiff(cwd);
     case "git/commit":
@@ -123,6 +140,10 @@ async function handleGitMethod(method, params, options = {}) {
       return gitRemoteUrl(cwd);
     case "git/generatePullRequestDraft":
       return gitGeneratePullRequestDraft(cwd, params, options);
+    case "git/createPullRequest":
+      return gitCreatePullRequest(cwd, params, options);
+    case "git/runStackedAction":
+      return gitRunStackedAction(cwd, params, options);
     case "git/branchesWithStatus":
       return gitBranchesWithStatus(cwd);
     default:
@@ -147,6 +168,10 @@ function threadNameSet(params) {
 // ─── Git Status ───────────────────────────────────────────────
 
 async function gitStatus(cwd) {
+  if (!(await isInsideGitWorkTree(cwd))) {
+    return nonRepositoryStatus(cwd);
+  }
+
   const [porcelain, branchInfo, repoRoot] = await Promise.all([
     git(cwd, "status", "--porcelain=v1", "-b"),
     revListCounts(cwd).catch(() => ({ ahead: 0, behind: 0 })),
@@ -168,20 +193,25 @@ async function gitStatus(cwd) {
   const { ahead, behind } = branchInfo;
   const detached = branchLine.includes("HEAD detached") || branchLine.includes("no branch");
   const noUpstream = tracking === null && !detached;
+  const hasHeadCommit = await refExists(cwd, "HEAD").catch(() => false);
+  const hasPushRemote = await pushRemoteAvailable(cwd, tracking).catch(() => false);
   const publishedToRemote = !detached && !!branch && await remoteBranchExists(cwd, branch).catch(() => false);
   const localOnlyCommitCount = await countLocalOnlyCommits(cwd, { detached }).catch(() => 0);
   const state = computeState(dirty, ahead, behind, detached, noUpstream);
-  const canPush = (ahead > 0 || noUpstream) && !detached;
+  const canPush = hasPushRemote && hasHeadCommit && (ahead > 0 || noUpstream) && !detached;
   const diff = await repoDiffTotals(cwd, {
     tracking,
     fileLines,
   }).catch(() => ({ additions: 0, deletions: 0, binaryFiles: 0 }));
 
   return {
+    isRepo: true,
     repoRoot,
     branch,
     tracking,
     dirty,
+    hasHeadCommit,
+    hasPushRemote,
     ahead,
     behind,
     localOnlyCommitCount,
@@ -191,6 +221,29 @@ async function gitStatus(cwd) {
     files,
     diff,
   };
+}
+
+async function gitInit(cwd) {
+  if (await isInsideGitWorkTree(cwd)) {
+    throw gitError("already_git_repository", "This folder is already inside a Git repository.");
+  }
+
+  if (fs.existsSync(path.join(cwd, ".git"))) {
+    throw gitError("git_metadata_exists", "A .git entry already exists in this folder.");
+  }
+
+  try {
+    await git(cwd, "init", "-b", "main");
+  } catch (err) {
+    if (gitInitBranchFlagUnsupported(err)) {
+      await git(cwd, "init");
+      await git(cwd, "symbolic-ref", "HEAD", "refs/heads/main");
+    } else {
+      throw gitError("git_init_failed", err.message || "Git initialization failed.");
+    }
+  }
+
+  return { status: await gitStatus(cwd) };
 }
 
 // ─── Git Diff ─────────────────────────────────────────────────
@@ -349,6 +402,14 @@ async function threadGenerateTitle(params, options = {}) {
 
 async function gitPush(cwd) {
   try {
+    const statusOutput = await git(cwd, "status", "--porcelain=v1", "-b");
+    const branchLine = statusOutput.trim().split("\n").filter(Boolean)[0] || "";
+    const tracking = parseTrackingFromStatus(branchLine);
+    if (!(await pushRemoteAvailable(cwd, tracking))) {
+      throw gitError("no_remote", "Add a Git remote before pushing.");
+    }
+    const remote = trackingRemoteName(tracking) || "origin";
+
     const branchOutput = await git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
     const branch = branchOutput.trim();
 
@@ -360,13 +421,12 @@ async function gitPush(cwd) {
         pushErr.message?.includes("no upstream") ||
         pushErr.message?.includes("has no upstream branch")
       ) {
-        await git(cwd, "push", "--set-upstream", "origin", branch);
+        await git(cwd, "push", "--set-upstream", remote, branch);
       } else {
         throw pushErr;
       }
     }
 
-    const remote = "origin";
     const status = await gitStatus(cwd);
     return { branch, remote, status };
   } catch (err) {
@@ -438,11 +498,20 @@ async function gitBranches(cwd) {
     if (isCurrent) current = name;
   }
 
-  const branches = [...branchSet].sort();
-  const defaultBranch = await detectDefaultBranch(cwd, branches);
+  if (!current) {
+    const unbornBranch = await currentBranchFromStatus(cwd).catch(() => null);
+    if (unbornBranch) {
+      current = unbornBranch;
+      if (!branchSet.has(unbornBranch)) {
+        branchSet.add(unbornBranch);
+      }
+    }
+  }
+  const resolvedBranches = [...branchSet].sort();
+  const defaultBranch = await detectDefaultBranch(cwd, resolvedBranches);
 
   return {
-    branches,
+    branches: resolvedBranches,
     branchesCheckedOutElsewhere: [...branchesCheckedOutElsewhere].sort(),
     worktreePathByBranch,
     localCheckoutPath,
@@ -521,7 +590,9 @@ async function gitLog(cwd) {
 // ─── Git Create Branch ────────────────────────────────────────
 
 async function gitCreateBranch(cwd, params) {
-  const name = normalizeCreatedBranchName(params.name);
+  const name = normalizeCreatedBranchName(params.name, {
+    prefixRemodex: params.prefixRemodex !== false,
+  });
   if (!name) {
     throw gitError("missing_branch_name", "Branch name is required.");
   }
@@ -915,6 +986,307 @@ async function gitRemoteUrl(cwd) {
   return { url: raw, ownerRepo };
 }
 
+// ─── Git Stacked Actions / Pull Requests ─────────────────────
+
+async function gitRunStackedAction(cwd, params, options = {}) {
+  const action = normalizeStackedGitAction(params.action);
+  const initialStatus = await gitStatus(cwd);
+  const wantsCommit = action === "commit" || action === "commit_push" || action === "commit_push_pr";
+  const wantsPr = action === "create_pr" || action === "commit_push_pr";
+
+  // Emits phase progress events on the same wire used by JSON-RPC responses
+  // so the iOS toast can reflect the live step (commit/push/PR) of a stacked action.
+  const progressId = typeof params.progressId === "string" && params.progressId.trim()
+    ? params.progressId.trim()
+    : null;
+  const emitPhase = (phase, status) => {
+    if (!progressId || typeof options.sendNotification !== "function") {
+      return;
+    }
+    options.sendNotification("git/stackedAction/progress", {
+      progressId,
+      phase,
+      status,
+    });
+  };
+
+  if (params.featureBranch === true) {
+    emitPhase("branch", "started");
+    await gitCreateFeatureBranch(cwd, params);
+    emitPhase("branch", "completed");
+  }
+
+  const branch = await currentBranchName(cwd);
+  const result = {
+    action,
+    branch: {
+      status: params.featureBranch === true ? "created" : "skipped_not_requested",
+      name: params.featureBranch === true ? branch : undefined,
+    },
+    commit: { status: "skipped_not_requested" },
+    push: { status: "skipped_not_requested" },
+    pr: { status: "skipped_not_requested" },
+    status: initialStatus,
+  };
+
+  if (action === "push" && initialStatus.dirty) {
+    throw gitError("dirty_worktree", "Commit or stash local changes before pushing.");
+  }
+  if (action === "create_pr" && initialStatus.dirty) {
+    throw gitError("dirty_worktree", "Commit local changes before creating a PR.");
+  }
+
+  if (wantsCommit) {
+    const statusBeforeCommit = await gitStatus(cwd);
+    if (statusBeforeCommit.dirty) {
+      emitPhase("commit", "started");
+      const commitResult = await gitCommit(cwd, {
+        message: params.commitMessage || params.message,
+      });
+      result.commit = {
+        status: "created",
+        ...commitResult,
+        commitSha: commitResult.hash,
+        subject: firstCommitMessageLine(params.commitMessage || params.message),
+      };
+      emitPhase("commit", "completed");
+    } else if (action === "commit") {
+      throw gitError("nothing_to_commit", "Nothing to commit.");
+    } else {
+      result.commit = { status: "skipped_clean" };
+      emitPhase("commit", "skipped");
+    }
+  }
+
+  const statusBeforePush = await gitStatus(cwd);
+  const shouldPush =
+    action === "push" ||
+    action === "commit_push" ||
+    action === "commit_push_pr" ||
+    (action === "create_pr" && (!statusBeforePush.tracking || statusBeforePush.ahead > 0));
+
+  if (shouldPush) {
+    if (action === "push" && !statusBeforePush.canPush) {
+      throw gitError("nothing_to_push", "Nothing to push.");
+    }
+    if (action === "commit_push" && result.commit.status === "skipped_clean" && !statusBeforePush.canPush) {
+      throw gitError("nothing_to_commit", "Nothing to commit or push.");
+    }
+    if (statusBeforePush.dirty) {
+      throw gitError("dirty_worktree", "Commit or stash local changes before pushing.");
+    }
+    emitPhase("push", "started");
+    result.push = {
+      state: "pushed",
+      ...(await gitPush(cwd)),
+    };
+    emitPhase("push", "completed");
+  }
+
+  if (wantsPr) {
+    emitPhase("createPR", "started");
+    result.pr = await gitCreatePullRequest(cwd, {
+      ...params,
+      pushBeforeCreate: false,
+    }, options);
+    emitPhase("createPR", "completed");
+  }
+
+  result.status = await gitStatus(cwd);
+  return result;
+}
+
+async function gitCreatePullRequest(cwd, params, options = {}) {
+  const status = await gitStatus(cwd);
+  if (status.dirty) {
+    throw gitError("dirty_worktree", "Commit local changes before creating a PR.");
+  }
+
+  const branch = status.branch || await currentBranchName(cwd);
+  if (!branch || branch === "HEAD") {
+    throw gitError("no_branch", "No current branch found.");
+  }
+
+  if (params.pushBeforeCreate !== false && (!status.tracking || status.ahead > 0)) {
+    await gitPush(cwd);
+  }
+
+  const branchResult = await gitBranches(cwd);
+  const baseBranch = resolveBaseBranchName(params.baseBranch, branchResult.default || branchResult.defaultBranch);
+  if (!baseBranch) {
+    throw gitError("no_default_branch", "Could not determine the repository default branch.");
+  }
+  if (baseBranch === branch) {
+    throw gitError(
+      "pull_request_same_branch",
+      `Cannot create a pull request from '${branch}' into itself. Create or switch to a feature branch first.`
+    );
+  }
+
+  await ensureGitHubCliReady(cwd);
+  const existing = await findOpenPullRequest(cwd, branch);
+  if (existing) {
+    return pullRequestResult("opened_existing", existing, baseBranch, branch);
+  }
+
+  const draft = await generatePullRequestDraftOrFallback(cwd, params, options, baseBranch, branch);
+  const bodyFile = path.join(os.tmpdir(), `remodex-pr-body-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}.md`);
+  fs.writeFileSync(bodyFile, draft.body, "utf8");
+
+  let createOutput = null;
+  try {
+    createOutput = await gitHubCli(cwd, [
+      "pr",
+      "create",
+      "--base",
+      baseBranch,
+      "--head",
+      branch,
+      "--title",
+      draft.title,
+      "--body-file",
+      bodyFile,
+    ]);
+  } catch (error) {
+    const existingFromError = await findOpenPullRequest(cwd, branch).catch(() => null);
+    if (existingFromError || isPullRequestAlreadyExistsMessage(error.message)) {
+      return pullRequestResult("opened_existing", existingFromError, baseBranch, branch, draft.title);
+    }
+    throw error;
+  } finally {
+    fs.rmSync(bodyFile, { force: true });
+  }
+
+  const created = await findOpenPullRequest(cwd, branch).catch(() => null);
+  const createdUrl = parsePullRequestUrlFromText(`${createOutput?.stdout || ""}\n${createOutput?.stderr || ""}`);
+  return pullRequestResult("created", created, baseBranch, branch, draft.title, createdUrl);
+}
+
+function normalizeStackedGitAction(rawAction) {
+  const action = typeof rawAction === "string" ? rawAction.trim() : "";
+  if (["commit", "push", "create_pr", "commit_push", "commit_push_pr"].includes(action)) {
+    return action;
+  }
+  throw gitError("invalid_git_action", "Unknown git action.");
+}
+
+async function gitCreateFeatureBranch(cwd, params) {
+  const requestedName = normalizeNonEmptyLine(params.featureBranchName || params.branchName);
+  const branchName = requestedName || await defaultFeatureBranchName(cwd, params);
+  await assertValidCreatedBranchName(cwd, branchName);
+  if (await branchExists(cwd, branchName)) {
+    throw gitError("branch_exists", `Branch '${branchName}' already exists.`);
+  }
+  await git(cwd, "checkout", "-b", branchName);
+  return branchName;
+}
+
+async function defaultFeatureBranchName(cwd, params) {
+  const prefix = normalizeNonEmptyLine(params.featureBranchPrefix) || "remodex/mobile-pr";
+  const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
+  const base = `${prefix}-${timestamp}`;
+  let candidate = base;
+  for (let index = 2; await branchExists(cwd, candidate); index += 1) {
+    candidate = `${base}-${index}`;
+  }
+  return candidate;
+}
+
+async function branchExists(cwd, branchName) {
+  try {
+    await git(cwd, "show-ref", "--verify", "--quiet", `refs/heads/${branchName}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function currentBranchName(cwd) {
+  return (await git(cwd, "rev-parse", "--abbrev-ref", "HEAD")).trim();
+}
+
+async function generatePullRequestDraftOrFallback(cwd, params, options, baseBranch, branch) {
+  try {
+    return await gitGeneratePullRequestDraft(cwd, { ...params, baseBranch }, options);
+  } catch (error) {
+    if (error?.errorCode && error.errorCode !== "pull_request_draft_generation_failed") {
+      throw error;
+    }
+    return {
+      title: `Update ${branch}`,
+      body: [
+        "## Summary",
+        `- Prepare changes from \`${branch}\` for review.`,
+        "",
+        "## Testing",
+        "- Not run from Remodex.",
+        "",
+        "## Notes",
+        `- Base branch: \`${baseBranch}\`.`,
+      ].join("\n"),
+    };
+  }
+}
+
+function firstCommitMessageLine(message) {
+  return normalizeNonEmptyLine(message) || "Changes from Remodex";
+}
+
+async function ensureGitHubCliReady(cwd) {
+  try {
+    await gitHubCli(cwd, ["auth", "status"]);
+  } catch (error) {
+    if (error?.errorCode) {
+      throw error;
+    }
+    throw gitError("github_cli_unavailable", error.message || "GitHub CLI is unavailable.");
+  }
+}
+
+async function findOpenPullRequest(cwd, branch) {
+  const output = await gitHubCli(cwd, [
+    "pr",
+    "list",
+    "--head",
+    branch,
+    "--state",
+    "open",
+    "--limit",
+    "1",
+    "--json",
+    "number,title,url,baseRefName,headRefName,state",
+  ]);
+  const pullRequests = JSON.parse(output.stdout.trim() || "[]");
+  return Array.isArray(pullRequests) ? pullRequests[0] || null : null;
+}
+
+function pullRequestResult(status, pullRequest, baseBranch, branch, fallbackTitle = "", fallbackUrl = null) {
+  return {
+    status,
+    url: pullRequest?.url || fallbackUrl || null,
+    number: pullRequest?.number || null,
+    baseBranch: pullRequest?.baseRefName || baseBranch,
+    headBranch: pullRequest?.headRefName || branch,
+    title: pullRequest?.title || fallbackTitle || "",
+  };
+}
+
+function isPullRequestAlreadyExistsMessage(message) {
+  return typeof message === "string" && /pull request .*already exists|already exists.*pull request/i.test(message);
+}
+
+function parsePullRequestUrlFromText(text) {
+  if (typeof text !== "string") {
+    return null;
+  }
+  const match = text.match(/https:\/\/github\.com\/[^\s"'<>]+\/pull\/\d+/);
+  return match ? match[0] : null;
+}
+
+async function gitHubCli(cwd, args) {
+  return runGitHubCliImpl(cwd, args);
+}
+
 async function buildCommitDraftContext(cwd) {
   const [statusResult, repoRoot] = await Promise.all([
     gitStatus(cwd),
@@ -962,7 +1334,7 @@ async function buildPullRequestDraftContext(cwd, params) {
     throw gitError("no_default_branch", "Could not determine the repository default branch.");
   }
 
-  const baseRef = await resolveExistingBranchRef(cwd, baseBranch);
+  const baseRef = await resolvePullRequestBaseRef(cwd, baseBranch);
   const mergeBase = (await git(cwd, "merge-base", "HEAD", baseRef)).trim();
   const patch = truncateDraftPatch(
     (await git(cwd, "diff", "--binary", "--find-renames", `${mergeBase}..HEAD`)).trim()
@@ -993,15 +1365,16 @@ async function buildPullRequestDraftContext(cwd, params) {
   };
 }
 
-async function resolveExistingBranchRef(cwd, branchName) {
+// PRs compare against the remote base when possible, matching GitHub's base branch.
+async function resolvePullRequestBaseRef(cwd, branchName) {
   const localRef = `refs/heads/${branchName}`;
   const remoteRef = `refs/remotes/origin/${branchName}`;
 
-  if (await refExists(cwd, localRef)) {
-    return localRef;
-  }
   if (await refExists(cwd, remoteRef)) {
     return remoteRef;
+  }
+  if (await refExists(cwd, localRef)) {
+    return localRef;
   }
 
   return branchName;
@@ -1459,6 +1832,20 @@ function parseOwnerRepo(remoteUrl) {
 // ─── Git Branches With Status ─────────────────────────────────
 
 async function gitBranchesWithStatus(cwd) {
+  const initialStatus = await gitStatus(cwd);
+  if (initialStatus.isRepo === false) {
+    return {
+      branches: [],
+      branchesCheckedOutElsewhere: [],
+      worktreePathByBranch: {},
+      localCheckoutPath: null,
+      current: null,
+      default: null,
+      defaultBranch: null,
+      status: initialStatus,
+    };
+  }
+
   const [branchResult, statusResult] = await Promise.all([
     gitBranches(cwd),
     gitStatus(cwd),
@@ -1680,7 +2067,7 @@ function normalizeWorktreeBranchRef(rawRef) {
   return branchName || null;
 }
 
-function normalizeCreatedBranchName(rawName) {
+function normalizeCreatedBranchName(rawName, { prefixRemodex = true } = {}) {
   const trimmed = typeof rawName === "string" ? rawName.trim() : "";
   if (!trimmed) {
     return "";
@@ -1692,7 +2079,7 @@ function normalizeCreatedBranchName(rawName) {
     .map((segment) => segment.trim().replace(/\s+/g, "-"))
     .join("/");
 
-  if (normalized.startsWith("remodex/")) {
+  if (!prefixRemodex || normalized.startsWith("remodex/")) {
     return normalized;
   }
   return `remodex/${normalized}`;
@@ -1753,6 +2140,30 @@ async function remoteBranchExists(cwd, branchName) {
   } catch {
     return false;
   }
+}
+
+// Uses the branch upstream when one exists; otherwise origin is the publish target.
+async function pushRemoteAvailable(cwd, tracking) {
+  const remoteName = trackingRemoteName(tracking) || "origin";
+  return remoteExists(cwd, remoteName);
+}
+
+async function remoteExists(cwd, remoteName) {
+  try {
+    const output = await git(cwd, "config", "--get", `remote.${remoteName}.url`);
+    return output.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function trackingRemoteName(tracking) {
+  const trimmed = typeof tracking === "string" ? tracking.trim() : "";
+  const slashIndex = trimmed.indexOf("/");
+  if (slashIndex <= 0) {
+    return null;
+  }
+  return trimmed.slice(0, slashIndex);
 }
 
 function sameFilePath(leftPath, rightPath) {
@@ -1856,6 +2267,10 @@ async function repoDiffTotals(cwd, context) {
 
 // Uses upstream when available; otherwise falls back to commits not yet present on any remote.
 async function resolveRepoDiffBase(cwd, tracking) {
+  if (!(await refExists(cwd, "HEAD"))) {
+    return EMPTY_TREE_HASH;
+  }
+
   if (tracking) {
     try {
       return (await git(cwd, "merge-base", "HEAD", "@{u}")).trim();
@@ -2068,6 +2483,22 @@ function git(cwd, ...args) {
     });
 }
 
+// Runs GitHub CLI in the same working tree so PR creation respects local auth and remotes.
+function runGitHubCli(cwd, args) {
+  return execFileAsync("gh", args, { cwd, timeout: GITHUB_CLI_TIMEOUT_MS })
+    .then(({ stdout, stderr }) => ({ stdout, stderr }))
+    .catch((err) => {
+      const detail = (err.stderr || err.message || "").trim();
+      if (err.code === "ENOENT") {
+        throw gitError("github_cli_unavailable", "GitHub CLI (`gh`) is required but is not available on PATH.");
+      }
+      if (/not logged into|not authenticated|gh auth login/i.test(detail)) {
+        throw gitError("github_cli_unauthenticated", "GitHub CLI is not authenticated. Run `gh auth login` on this Mac and retry.");
+      }
+      throw gitError("github_cli_failed", detail || "GitHub CLI command failed.");
+    });
+}
+
 async function revListCounts(cwd) {
   const output = await git(cwd, "rev-list", "--left-right", "--count", "HEAD...@{u}");
   const parts = output.trim().split(/\s+/);
@@ -2082,6 +2513,9 @@ function parseBranchFromStatus(line) {
   const match = line.match(/^## (.+?)(?:\.{3}|$)/);
   if (!match) return null;
   const branch = match[1].trim();
+  if (branch.startsWith("No commits yet on ")) {
+    return branch.substring("No commits yet on ".length).trim() || null;
+  }
   if (branch === "HEAD (no branch)" || branch.includes("HEAD detached")) return null;
   return branch;
 }
@@ -2130,6 +2564,48 @@ function gitError(errorCode, userMessage) {
   err.errorCode = errorCode;
   err.userMessage = userMessage;
   return err;
+}
+
+function nonRepositoryStatus(cwd) {
+  return {
+    isRepo: false,
+    repoRoot: null,
+    branch: null,
+    tracking: null,
+    dirty: false,
+    hasHeadCommit: false,
+    hasPushRemote: false,
+    ahead: 0,
+    behind: 0,
+    localOnlyCommitCount: 0,
+    state: "not_initialized",
+    canPush: false,
+    publishedToRemote: false,
+    files: [],
+    diff: { additions: 0, deletions: 0, binaryFiles: 0 },
+  };
+}
+
+async function isInsideGitWorkTree(cwd) {
+  try {
+    const output = await git(cwd, "rev-parse", "--is-inside-work-tree");
+    return output.trim() === "true";
+  } catch {
+    return false;
+  }
+}
+
+async function currentBranchFromStatus(cwd) {
+  const output = await git(cwd, "status", "--porcelain=v1", "-b");
+  const branchLine = output.trim().split("\n").filter(Boolean)[0] || "";
+  return parseBranchFromStatus(branchLine);
+}
+
+function gitInitBranchFlagUnsupported(error) {
+  const message = error?.message || "";
+  return message.includes("unknown switch `b'")
+    || message.includes("unknown option `b'")
+    || message.includes("usage: git init");
 }
 
 // Resolves git commands to a concrete local directory.
@@ -2208,9 +2684,13 @@ module.exports = {
   __test: {
     gitGenerateCommitMessage,
     gitGeneratePullRequestDraft,
+    gitCreatePullRequest,
+    gitRunStackedAction,
     threadGenerateTitle,
     threadNameSet,
     gitBranches,
+    gitBranchesWithStatus,
+    gitInit,
     gitCreateBranch,
     gitCreateWorktree,
     gitCreateManagedWorktree,
@@ -2233,6 +2713,12 @@ module.exports = {
     },
     resetRunStructuredCodexJsonImplementation() {
       runStructuredCodexJsonImpl = runStructuredCodexJson;
+    },
+    setRunGitHubCliImplementation(fn) {
+      runGitHubCliImpl = typeof fn === "function" ? fn : runGitHubCli;
+    },
+    resetRunGitHubCliImplementation() {
+      runGitHubCliImpl = runGitHubCli;
     },
   },
 };

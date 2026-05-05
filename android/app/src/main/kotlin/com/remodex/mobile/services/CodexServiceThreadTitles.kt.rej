@@ -1,0 +1,27 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceThreadTitles.kt b/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceThreadTitles.kt	(rejected hunks)
+@@ -50,13 +50,14 @@ internal suspend fun CodexService.renameThreadInternal(
+     if (trimmedName.isEmpty()) throw CodexServiceError.InvalidInput("Thread name is empty")
+ 
+     persistThreadRename(tid, trimmedName)
+-    _threads.value =
++    publishThreads(
+         upsertThreadTitle(
+             list = _threads.value,
+             threadId = tid,
+             title = trimmedName,
+             createIfMissing = true,
+-        )
++        ),
++    )
+ 
+     sendThreadNameSetRpc(tid, trimmedName)
+     scope.launch { runCatching { refreshThreadsInternal() } }
+@@ -197,7 +198,7 @@ private fun CodexService.applyAutomaticThreadTitle(
+             persistedName = persistedThreadRename(threadId),
+         )
+     if (!result.applied) return false
+-    _threads.value = result.threads
++    publishThreads(result.threads)
+     result.persistedName?.let { persistThreadRename(threadId, it) }
+     scope.launch { runCatching { sendThreadNameSetRpc(threadId, result.persistedName.orEmpty()) } }
+     return true

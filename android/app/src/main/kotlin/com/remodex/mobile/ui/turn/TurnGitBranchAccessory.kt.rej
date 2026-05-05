@@ -1,0 +1,84 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnGitBranchAccessory.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnGitBranchAccessory.kt	(rejected hunks)
+@@ -1,5 +1,6 @@
+ package com.remodex.mobile.ui.turn
+ 
++import androidx.compose.foundation.border
+ import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Column
+@@ -41,6 +42,8 @@ import androidx.compose.ui.semantics.contentDescription
+ import androidx.compose.ui.semantics.semantics
+ import androidx.compose.ui.unit.dp
+ import com.remodex.mobile.R
++import com.remodex.mobile.ui.theme.AgentLightColors
++import com.remodex.mobile.ui.theme.isAgentLightChrome
+ import com.remodex.mobile.data.GitBranchDisplaySummary
+ import com.remodex.mobile.data.GitBranchPickerRules
+ 
+@@ -407,6 +410,20 @@ private fun LoadedGitBranchPill(
+ ) {
+     val unknown = stringResource(R.string.git_branch_placeholder_unknown)
+     val branchName = summary.currentBranch ?: unknown
++    val chrome = isAgentLightChrome()
++    val pillShape = RoundedCornerShape(50)
++    val pillFill =
++        if (chrome) {
++            AgentLightColors.Surface.copy(alpha = 0.93f)
++        } else {
++            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
++        }
++    val outlineMod: Modifier =
++        if (chrome) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, pillShape) else Modifier
++    val glyphTint =
++        if (chrome) AgentLightColors.IconMuted else MaterialTheme.colorScheme.onSurfaceVariant
++    val labelTint =
++        if (chrome) AgentLightColors.TextSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+     val baseMod =
+         if (branchPickerEnabled) {
+             modifier.clickable(onClick = onOpenPicker)
+@@ -414,9 +431,9 @@ private fun LoadedGitBranchPill(
+             modifier
+         }
+     Surface(
+-        shape = RoundedCornerShape(50),
+-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+-        modifier = baseMod,
++        shape = pillShape,
++        color = pillFill,
++        modifier = outlineMod.then(baseMod),
+     ) {
+         Row(
+             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+@@ -426,26 +443,26 @@ private fun LoadedGitBranchPill(
+             Icon(
+                 imageVector = Icons.Outlined.AccountTree,
+                 contentDescription = null,
+-                modifier = Modifier.size(16.dp),
+-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
++                modifier = Modifier.size(11.dp),
++                tint = glyphTint,
+             )
+             Text(
+                 text = branchName,
+                 style = MaterialTheme.typography.labelMedium,
+-                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                color = labelTint,
+                 maxLines = 1,
+             )
+             if (isSwitchingBranch) {
+                 CircularProgressIndicator(
+-                    modifier = Modifier.size(14.dp),
++                    modifier = Modifier.size(10.dp),
+                     strokeWidth = 2.dp,
+                 )
+             } else {
+                 Icon(
+                     imageVector = Icons.Filled.ArrowDropDown,
+                     contentDescription = null,
+-                    modifier = Modifier.size(18.dp),
+-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
++                    modifier = Modifier.size(12.dp),
++                    tint = glyphTint,
+                 )
+             }
+         }

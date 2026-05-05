@@ -1,0 +1,20 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceTurn.kt b/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceTurn.kt	(rejected hunks)
+@@ -215,7 +215,7 @@ private suspend fun CodexService.markTurnStartAccepted(
+ private fun CodexService.bumpThreadActivityAfterTurn(threadId: String) {
+     val list = _threads.value
+     if (list.none { it.id == threadId }) return
+-    _threads.value =
++    publishThreads(
+         sortThreadsForBridge(
+             list.map {
+                 if (it.id == threadId) {
+@@ -227,7 +227,8 @@ private fun CodexService.bumpThreadActivityAfterTurn(threadId: String) {
+                     it
+                 }
+             },
+-        )
++        ),
++    )
+ }
+ 
+ suspend fun CodexService.startTurnForRepository(

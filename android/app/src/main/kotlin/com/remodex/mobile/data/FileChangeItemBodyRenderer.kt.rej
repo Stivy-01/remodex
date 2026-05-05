@@ -1,0 +1,26 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/data/FileChangeItemBodyRenderer.kt b/android/app/src/main/kotlin/com/remodex/mobile/data/FileChangeItemBodyRenderer.kt	(rejected hunks)
+@@ -32,8 +32,11 @@ internal object FileChangeItemBodyRenderer {
+             changes.mapNotNull { entry ->
+                 if (entry.path.isBlank()) return@mapNotNull null
+                 buildString {
++                    val trimmedPath = entry.path.trim()
+                     append("Path: ")
+-                    append(entry.path.trim())
++                    append(trimmedPath)
++                    append("\nFilename: ")
++                    append(fileNameFromPath(trimmedPath))
+                     append("\nKind: ")
+                     append(entry.kind.trim().ifBlank { "update" })
+                     val adds = entry.additions
+@@ -128,5 +131,11 @@ internal object FileChangeItemBodyRenderer {
+         }
+         return null
+     }
++
++    private fun fileNameFromPath(path: String): String =
++        path
++            .replace('\\', '/')
++            .substringAfterLast('/')
++            .ifBlank { path }
+ }
+ 

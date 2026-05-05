@@ -1,0 +1,115 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnMessageRow.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnMessageRow.kt	(rejected hunks)
+@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import com.remodex.mobile.R
+@@ -32,11 +33,20 @@ fun TurnMessageRow(
+     modifier: Modifier = Modifier,
+     commandExecutionDetails: CommandExecutionDetails? = null,
+ ) {
++    val isTimelineToolRow =
++        message.role == CodexMessageRole.system &&
++            (message.kind == CodexMessageKind.commandExecution ||
++                message.kind == CodexMessageKind.fileChange)
+     val horizontalAlignment =
+         when (message.role) {
+             CodexMessageRole.user -> Alignment.End
+             CodexMessageRole.assistant -> Alignment.Start
+-            CodexMessageRole.system -> Alignment.CenterHorizontally
++            CodexMessageRole.system ->
++                if (isTimelineToolRow) {
++                    Alignment.Start
++                } else {
++                    Alignment.CenterHorizontally
++                }
+         }
+     val colors = MaterialTheme.colorScheme
+     val bubbleColor =
+@@ -45,9 +55,9 @@ fun TurnMessageRow(
+             CodexMessageRole.assistant -> colors.surface.copy(alpha = 0.0f)
+             CodexMessageRole.system ->
+                 when (message.kind) {
+-                    CodexMessageKind.thinking -> colors.surfaceVariant.copy(alpha = 0.28f)
+-                    CodexMessageKind.fileChange -> colors.tertiaryContainer.copy(alpha = 0.22f)
+-                    CodexMessageKind.commandExecution -> colors.errorContainer.copy(alpha = 0.18f)
++                    CodexMessageKind.thinking -> Color.Transparent
++                    CodexMessageKind.fileChange -> Color.Transparent
++                    CodexMessageKind.commandExecution -> Color.Transparent
+                     CodexMessageKind.plan -> colors.primaryContainer.copy(alpha = 0.22f)
+                     CodexMessageKind.pendingApproval,
+                     CodexMessageKind.userInputPrompt,
+@@ -71,15 +81,21 @@ fun TurnMessageRow(
+             shape = MaterialTheme.shapes.medium,
+             color = bubbleColor,
+             modifier =
+-                Modifier
+-                    .fillMaxWidth(
+-                        when (message.role) {
+-                            CodexMessageRole.user -> 0.92f
+-                            CodexMessageRole.assistant -> 0.98f
+-                            CodexMessageRole.system -> 0.96f
+-                        },
+-                    )
+-                    .widthIn(max = 620.dp),
++                if (isTimelineToolRow) {
++                    Modifier
++                        .fillMaxWidth(0.96f)
++                        .widthIn(max = 620.dp)
++                } else {
++                    Modifier
++                        .fillMaxWidth(
++                            when (message.role) {
++                                CodexMessageRole.user -> 0.92f
++                                CodexMessageRole.assistant -> 0.98f
++                                CodexMessageRole.system -> 0.96f
++                            },
++                        )
++                        .widthIn(max = 620.dp)
++                },
+         ) {
+             Column(
+                 modifier =
+@@ -120,10 +136,25 @@ fun TurnMessageRow(
+                         hasDirectiveFindings = directiveOutcome.hasFindings,
+                     )
+                 when (message.kind) {
++                    CodexMessageKind.thinking -> {
++                        TurnThinkingTimelineRow(
++                            bodyMarkdown =
++                                timelineBodyText(
++                                    message = message,
++                                    skipThinkingHeadline = true,
++                                    cleanedDirectiveText = directiveOutcome.cleanedText,
++                                    hasDirectiveFindings = directiveOutcome.hasFindings,
++                                ),
++                            contentColor = onBubble,
++                            useMarkdown = shouldRenderMarkdownBody(message),
++                            isStreaming = message.isStreaming,
++                            messageId = message.id,
++                            modifier = Modifier.fillMaxWidth(),
++                        )
++                    }
+                     CodexMessageKind.fileChange -> {
+                         FileEditRow(
+                             message = message,
+-                            contentColor = onBubble,
+                             modifier = Modifier.fillMaxWidth(),
+                         )
+                     }
+@@ -266,9 +297,9 @@ private fun systemKindLabel(message: CodexMessage): String? {
+     if (message.role != CodexMessageRole.system) return null
+     return when (message.kind) {
+         CodexMessageKind.chat -> null
+-        CodexMessageKind.thinking -> stringResource(R.string.turn_timeline_kind_thinking)
+-        CodexMessageKind.fileChange -> stringResource(R.string.turn_timeline_kind_file)
+-        CodexMessageKind.commandExecution -> stringResource(R.string.turn_timeline_kind_command)
++        CodexMessageKind.thinking -> null
++        CodexMessageKind.fileChange -> null
++        CodexMessageKind.commandExecution -> null
+         CodexMessageKind.plan -> stringResource(R.string.turn_timeline_kind_plan)
+         CodexMessageKind.subagentAction -> stringResource(R.string.turn_timeline_kind_subagent)
+         CodexMessageKind.userInputPrompt -> stringResource(R.string.turn_timeline_kind_prompt)

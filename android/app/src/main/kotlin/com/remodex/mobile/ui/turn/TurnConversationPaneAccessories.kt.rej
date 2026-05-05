@@ -1,0 +1,62 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnConversationPaneAccessories.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnConversationPaneAccessories.kt	(rejected hunks)
+@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.layout.size
+ import androidx.compose.material3.Button
+-import androidx.compose.material.icons.Icons
+-import androidx.compose.material.icons.outlined.AccountTree
+ import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.ExperimentalMaterial3Api
+ import androidx.compose.material3.MaterialTheme
+@@ -18,8 +16,6 @@ import androidx.compose.material3.RadioButton
+ import androidx.compose.material3.Surface
+ import androidx.compose.material3.Text
+ import androidx.compose.material3.TextButton
+-import androidx.compose.material3.Icon
+-import androidx.compose.material3.IconButton
+ import androidx.compose.material3.rememberModalBottomSheetState
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.getValue
+@@ -109,42 +105,6 @@ internal fun QueuedDraftsCard(
+     }
+ }
+ 
+-@Composable
+-internal fun ForkThreadAccessoryCard(
+-    enabled: Boolean,
+-    onOpen: () -> Unit,
+-    modifier: Modifier = Modifier,
+-) {
+-    Surface(
+-        modifier = modifier.fillMaxWidth(),
+-        shape = MaterialTheme.shapes.small,
+-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+-    ) {
+-        Row(
+-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+-            verticalAlignment = Alignment.CenterVertically,
+-            horizontalArrangement = Arrangement.SpaceBetween,
+-        ) {
+-            Text(
+-                text = stringResource(R.string.turn_fork_accessory_title),
+-                style = MaterialTheme.typography.bodySmall,
+-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+-            )
+-            IconButton(
+-                onClick = onOpen,
+-                enabled = enabled,
+-                modifier = Modifier.size(40.dp),
+-            ) {
+-                Icon(
+-                    imageVector = Icons.Outlined.AccountTree,
+-                    contentDescription = stringResource(R.string.turn_fork_accessory_action),
+-                    tint = MaterialTheme.colorScheme.primary,
+-                )
+-            }
+-        }
+-    }
+-}
+-
+ @Composable
+ internal fun WorktreeHandoffAccessoryCard(
+     isWorktreeProject: Boolean,

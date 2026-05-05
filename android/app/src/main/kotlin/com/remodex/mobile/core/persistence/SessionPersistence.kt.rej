@@ -1,0 +1,136 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/core/persistence/SessionPersistence.kt b/android/app/src/main/kotlin/com/remodex/mobile/core/persistence/SessionPersistence.kt	(rejected hunks)
+@@ -3,11 +3,14 @@ package com.remodex.mobile.core.persistence
+ import android.content.Context
+ import com.remodex.mobile.core.model.CODEX_SECURE_PROTOCOL_VERSION
+ import com.remodex.mobile.core.model.CodexPairingQRPayload
++import com.remodex.mobile.core.model.CodexThread
++import com.remodex.mobile.core.model.CodexThreadSyncState
+ import com.remodex.mobile.core.security.CodexSecureKeys
+ import com.remodex.mobile.core.security.SecureStore
+ import java.net.URLDecoder
+ import java.net.URLEncoder
+ import java.nio.charset.StandardCharsets
++import java.time.Instant
+ 
+ /**
+  * Aggregates saved relay pairing and lightweight UI session hints (e.g. last open thread).
+@@ -178,6 +181,24 @@ class SessionPersistence(
+         }
+     }
+ 
++    fun loadCachedThreads(): List<CodexThread> =
++        prefs.getStringSet(KEY_CACHED_THREADS, emptySet()).orEmpty()
++            .mapNotNull(::decodeCachedThreadEntry)
++            .sortedWith(
++                compareByDescending<CachedThreadEntry> { it.sortInstant ?: Instant.EPOCH }
++                    .thenBy { it.index },
++            )
++            .map { it.thread }
++
++    fun saveCachedThreads(threads: List<CodexThread>) {
++        val entries =
++            threads
++                .take(MAX_CACHED_THREADS)
++                .mapIndexedNotNull(::encodeCachedThreadEntry)
++                .toSet()
++        prefs.edit().putStringSet(KEY_CACHED_THREADS, entries).apply()
++    }
++
+     private fun writeOrRemove(
+         key: String,
+         value: String?,
+@@ -198,7 +219,9 @@ class SessionPersistence(
+         const val KEY_RUNTIME_SERVICE_TIER = "codex.runtime.selectedServiceTier"
+         const val KEY_ASSOCIATED_MANAGED_WORKTREES = "codex.thread.associatedManagedWorktrees"
+         const val KEY_THREAD_RENAMES = "codex.thread.renamedThreadNames"
++        const val KEY_CACHED_THREADS = "codex.thread.cachedThreadSnapshot.v1"
+         const val MANAGED_WORKTREE_ENTRY_SEPARATOR = "\t"
++        const val MAX_CACHED_THREADS = 100
+     }
+ 
+     private fun encodeManagedWorktreeEntry(entry: Map.Entry<String, String>): String =
+@@ -225,6 +248,84 @@ class SessionPersistence(
+         return threadId to name
+     }
+ 
++    private fun encodeCachedThreadEntry(
++        index: Int,
++        thread: CodexThread,
++    ): String? {
++        val id = thread.id.trim().takeIf { it.isNotEmpty() } ?: return null
++        val fields =
++            listOf(
++                index.toString(),
++                id,
++                thread.title.orEmpty(),
++                thread.name.orEmpty(),
++                thread.preview.orEmpty(),
++                thread.createdAt?.toString().orEmpty(),
++                thread.updatedAt?.toString().orEmpty(),
++                thread.cwd.orEmpty(),
++                thread.syncState.name,
++                thread.forkedFromThreadId.orEmpty(),
++                thread.parentThreadId.orEmpty(),
++                thread.agentId.orEmpty(),
++                thread.agentNickname.orEmpty(),
++                thread.agentRole.orEmpty(),
++                thread.model.orEmpty(),
++                thread.modelProvider.orEmpty(),
++            )
++        return fields.joinToString(MANAGED_WORKTREE_ENTRY_SEPARATOR) { urlEncode(it) }
++    }
++
++    private fun decodeCachedThreadEntry(raw: String): CachedThreadEntry? {
++        val parts =
++            raw.split(MANAGED_WORKTREE_ENTRY_SEPARATOR)
++                .map { runCatching { urlDecode(it) }.getOrNull() ?: return null }
++        if (parts.size < 9) return null
++        val id = parts[1].trim().takeIf { it.isNotEmpty() } ?: return null
++        val createdAt = parts.getOrNull(5).parseInstantOrNull()
++        val updatedAt = parts.getOrNull(6).parseInstantOrNull()
++        val syncState =
++            parts.getOrNull(8)
++                ?.let { runCatching { CodexThreadSyncState.valueOf(it) }.getOrNull() }
++                ?: CodexThreadSyncState.live
++        val thread =
++            CodexThread(
++                id = id,
++                title = parts.getOrNull(2).nonBlankOrNull(),
++                name = parts.getOrNull(3).nonBlankOrNull(),
++                preview = parts.getOrNull(4).nonBlankOrNull(),
++                createdAt = createdAt,
++                updatedAt = updatedAt,
++                cwd = CodexThread.normalizeProjectPath(parts.getOrNull(7)),
++                syncState = syncState,
++                forkedFromThreadId = CodexThread.normalizeIdentifier(parts.getOrNull(9)),
++                parentThreadId = CodexThread.normalizeIdentifier(parts.getOrNull(10)),
++                agentId = CodexThread.normalizeIdentifier(parts.getOrNull(11)),
++                agentNickname = CodexThread.normalizeIdentifier(parts.getOrNull(12)),
++                agentRole = CodexThread.normalizeIdentifier(parts.getOrNull(13)),
++                model = CodexThread.normalizeIdentifier(parts.getOrNull(14)),
++                modelProvider = CodexThread.normalizeIdentifier(parts.getOrNull(15)),
++            )
++        return CachedThreadEntry(
++            index = parts[0].toIntOrNull() ?: Int.MAX_VALUE,
++            sortInstant = updatedAt ?: createdAt,
++            thread = thread,
++        )
++    }
++
++    private data class CachedThreadEntry(
++        val index: Int,
++        val sortInstant: Instant?,
++        val thread: CodexThread,
++    )
++
++    private fun String?.nonBlankOrNull(): String? =
++        this?.trim()?.takeIf { it.isNotEmpty() }
++
++    private fun String?.parseInstantOrNull(): Instant? =
++        this?.trim()?.takeIf { it.isNotEmpty() }?.let { raw ->
++            runCatching { Instant.parse(raw) }.getOrNull()
++        }
++
+     private fun urlEncode(value: String): String =
+         URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+ 

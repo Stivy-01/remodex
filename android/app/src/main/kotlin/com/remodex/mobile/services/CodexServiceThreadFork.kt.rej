@@ -1,0 +1,28 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceThreadFork.kt b/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceThreadFork.kt	(rejected hunks)
+@@ -97,7 +97,7 @@ internal suspend fun CodexService.forkThreadInternal(
+     }
+ 
+     var patched = applyAuthoritativeProjectPathToServerThread(decoded)
+-    _threads.value = upsertThreadRow(_threads.value, patched)
++    publishThreads(upsertThreadRow(_threads.value, patched))
+ 
+     resolvedProjectPath?.let { beginAuthoritativeProjectPathTransition(patched.id, it) }
+ 
+@@ -135,7 +135,7 @@ internal suspend fun CodexService.forkThreadInternal(
+ 
+     val base = hydrated ?: _threads.value.find { it.id == forkId } ?: patched
+     val finalThread = patchForkThreadClientMetadata(base, resolvedProjectPath, sourceModel, sourceModelProvider)
+-    _threads.value = upsertThreadRow(_threads.value, finalThread)
++    publishThreads(upsertThreadRow(_threads.value, finalThread))
+     resumedThreadIds.add(forkId)
+     return finalThread
+ }
+@@ -163,7 +163,7 @@ private fun CodexService.patchForkThreadClientMetadata(
+     }
+     if (!didPatch) return t
+     var merged = applyAuthoritativeProjectPathToServerThread(t)
+-    _threads.value = upsertThreadRow(_threads.value, merged)
++    publishThreads(upsertThreadRow(_threads.value, merged))
+     merged.normalizedProjectPath?.let { norm ->
+         rememberAssociatedManagedWorktreePathIfWorktree(norm, merged.id)
+     }

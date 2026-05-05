@@ -1,0 +1,38 @@
+{
+  "schema": "universal-pet-v1",
+  "name": "Relay",
+  "slug": "relay",
+  "description": "A tiny terminal relay creature for Remodex.",
+  "spritesheet": {
+    "file": "poses-transparent.png",
+    "width": 300,
+    "height": 300,
+    "columns": 3,
+    "rows": 3,
+    "cellWidth": 100,
+    "cellHeight": 100
+  },
+  "animations": {
+    "idle": { "row": 0, "frames": 1, "fps": 1, "loop": false },
+    "running-right": { "row": 2, "frames": 3, "fps": 6, "loop": true },
+    "running-left": { "row": 2, "frames": 3, "fps": 6, "loop": true },
+    "waving": { "row": 0, "frames": 1, "fps": 1, "loop": false },
+    "jumping": { "row": 2, "frames": 1, "fps": 1, "loop": false },
+    "failed": { "row": 1, "frames": 1, "fps": 1, "loop": false },
+    "waiting": { "row": 0, "frames": 1, "fps": 1, "loop": false },
+    "running": { "row": 2, "frames": 3, "fps": 6, "loop": true },
+    "review": { "row": 1, "frames": 1, "fps": 1, "loop": false }
+  },
+  "stateMap": {
+    "default": "idle",
+    "stopped": "waiting",
+    "starting": "waving",
+    "relay_running": "idle",
+    "local_ready": "idle",
+    "remote_placeholder_ready": "review",
+    "waiting_for_pairing": "waving",
+    "connected": "idle",
+    "warning": "review",
+    "error": "failed"
+  }
+}

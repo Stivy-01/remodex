@@ -1,0 +1,19 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/core/model/TimelineBoundedCache.kt b/android/app/src/main/kotlin/com/remodex/mobile/core/model/TimelineBoundedCache.kt	(rejected hunks)
+@@ -46,6 +46,8 @@ internal object TurnTimelineCacheKey {
+             append('|')
+             append(kind)
+             append('|')
++            append(text.length)
++            append(':')
+             append(text.hashCode())
+             variant?.let {
+                 append('|')
+@@ -61,6 +63,8 @@ internal object TurnTimelineCacheKey {
+         buildString {
+             append(kind)
+             append('|')
++            append(text.length)
++            append(':')
+             append(text.hashCode())
+             variant?.let {
+                 append('|')

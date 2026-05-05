@@ -1,0 +1,56 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/agent/SidebarDrawerContent.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/agent/SidebarDrawerContent.kt	(rejected hunks)
+@@ -9,10 +9,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.layout.size
+-import androidx.compose.material.icons.Icons
+-import androidx.compose.material.icons.filled.Refresh
+-import androidx.compose.material.icons.outlined.Settings
+-import androidx.compose.material.icons.outlined.Terminal
+ import androidx.compose.material3.HorizontalDivider
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.IconButton
+@@ -24,10 +20,12 @@ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.res.painterResource
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.text.style.TextAlign
+ import androidx.compose.ui.unit.dp
+ import androidx.navigation.NavHostController
++import com.composables.icons.lucide.R as LucideR
+ import com.remodex.mobile.AppContainer
+ import com.remodex.mobile.R
+ import com.remodex.mobile.core.transport.ConnectionState
+@@ -86,7 +84,7 @@ fun SidebarDrawerContent(
+                     .padding(horizontal = 16.dp, vertical = 12.dp),
+         ) {
+             Icon(
+-                imageVector = Icons.Outlined.Terminal,
++                painter = painterResource(LucideR.drawable.lucide_ic_terminal),
+                 contentDescription = null,
+                 tint = MaterialTheme.colorScheme.primary,
+                 modifier = Modifier.size(28.dp),
+@@ -103,8 +101,9 @@ fun SidebarDrawerContent(
+                 },
+             ) {
+                 Icon(
+-                    imageVector = Icons.Filled.Refresh,
++                    painter = painterResource(LucideR.drawable.lucide_ic_refresh_cw),
+                     contentDescription = stringResource(R.string.cd_refresh_thread_list),
++                    modifier = Modifier.size(20.dp),
+                 )
+             }
+         }
+@@ -218,8 +217,9 @@ fun SidebarDrawerContent(
+                 modifier = Modifier.align(Alignment.CenterStart),
+             ) {
+                 Icon(
+-                    imageVector = Icons.Outlined.Settings,
++                    painter = painterResource(LucideR.drawable.lucide_ic_settings),
+                     contentDescription = stringResource(R.string.nav_settings),
++                    modifier = Modifier.size(20.dp),
+                 )
+             }
+             Text(
