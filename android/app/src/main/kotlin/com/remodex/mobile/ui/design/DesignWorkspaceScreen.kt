@@ -37,8 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.remodex.mobile.R
-import LucideR as LucideR
+import com.composables.icons.lucide.R as LucideR
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
