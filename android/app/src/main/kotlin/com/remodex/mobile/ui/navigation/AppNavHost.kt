@@ -5,9 +5,12 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.ui.about.AboutScreen
 import com.remodex.mobile.ui.about.WhatsNewScreen
+import com.remodex.mobile.ui.design.DesignViewModel
+import com.remodex.mobile.ui.design.DesignWorkspaceScreen
 import com.remodex.mobile.ui.home.RootReconnectUiState
 import com.remodex.mobile.ui.home.HomeMainContent
 import com.remodex.mobile.ui.archived.ArchivedChatsScreen
@@ -21,6 +24,7 @@ fun AppNavHost(
     onReconnectSavedPairing: () -> Unit = {},
     onWakeSavedComputer: () -> Unit = {},
     onOpenPairingScanner: () -> Unit = {},
+    onNavigateToDesign: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -35,6 +39,7 @@ fun AppNavHost(
                 onReconnectSavedPairing = onReconnectSavedPairing,
                 onWakeSavedComputer = onWakeSavedComputer,
                 onOpenPairingScanner = onOpenPairingScanner,
+                onNavigateToDesign = onNavigateToDesign,
             )
         }
         composable(AppRoutes.Settings) {
@@ -56,6 +61,12 @@ fun AppNavHost(
         }
         composable(AppRoutes.WhatsNew) {
             WhatsNewScreen(onNavigateBack = { navController.popBackStack() })
+        }
+        composable(AppRoutes.Design) {
+            DesignWorkspaceScreen(
+                viewModel = viewModel(),
+                onNavigateBack = { navController.popBackStack() },
+            )
         }
     }
 }

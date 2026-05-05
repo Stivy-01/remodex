@@ -953,6 +953,7 @@ fun MainShell(
                         onReconnectSavedPairing = viewModel::reconnectSavedPairingManually,
                         onWakeSavedComputer = viewModel::wakeSavedComputerDisplay,
                         onOpenPairingScanner = onOpenPairingScanner,
+                        onNavigateToDesign = { navController.navigate(AppRoutes.Design) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
