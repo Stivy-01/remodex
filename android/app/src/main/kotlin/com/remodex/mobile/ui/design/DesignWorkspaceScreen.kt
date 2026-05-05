@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -31,6 +32,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +60,7 @@ fun DesignWorkspaceScreen(
     val selectedNode by viewModel.selectedNode.collectAsState()
     val exportResult by viewModel.exportResult.collectAsState()
     val promptText by viewModel.promptText.collectAsState()
+    var showExportSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -69,7 +74,7 @@ fun DesignWorkspaceScreen(
                         )
                         currentDocument?.let { doc ->
                             Text(
-                                text = statusLabel(doc.status),
+                                text = statusLabel(doc.status, generationState.status),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -86,6 +91,12 @@ fun DesignWorkspaceScreen(
                 },
                 actions = {
                     if (currentDocument != null && currentDocument?.status == DesignDocumentStatus.READY) {
+                        IconButton(onClick = { showExportSheet = true }) {
+                            Icon(
+                                painter = painterResource(LucideR.drawable.lucide_ic_download),
+                                contentDescription = "Export",
+                            )
+                        }
                         FilledTonalButton(
                             onClick = { viewModel.onToggleMode() },
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
@@ -115,7 +126,14 @@ fun DesignWorkspaceScreen(
                     onPromptTextChanged = viewModel::onPromptTextChanged,
                     onSubmitPrompt = viewModel::onSubmitPrompt,
                 )
-            } else if (generationState.status == "generating" || generationState.status == "rendering_snapshot") {
+            } else if (generationState.status == "error") {
+                GenerationErrorView(
+                    onRetry = viewModel::onSubmitPrompt,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                )
+            } else if (generationState.status in listOf("generating", "rendering_snapshot")) {
                 GenerationProgressView(
                     steps = generationState.steps,
                     modifier = Modifier
@@ -137,11 +155,11 @@ fun DesignWorkspaceScreen(
                         InspectorCard(
                             node = node,
                             onAskAiEdit = {
-                                    viewModel.editDesignWithAi(
-                                        prompt = promptText,
-                                        selectedNodeId = node?.id,
-                                    )
-                                },
+                                viewModel.editDesignWithAi(
+                                    prompt = promptText,
+                                    selectedNodeId = node?.id,
+                                )
+                            },
                             onDismiss = { viewModel.onSelectionCleared() },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -153,9 +171,8 @@ fun DesignWorkspaceScreen(
                 BottomPromptBar(
                     promptText = promptText,
                     onPromptTextChanged = viewModel::onPromptTextChanged,
-                    onSubmit = viewModel::onSubmitPrompt,
-                    onExport = { viewModel.requestExport(ExportTarget.JETPACK_COMPOSE) },
-                    hasExport = exportResult == null,
+                    onSubmit = { viewModel.editDesignWithAi(promptText, selectedNode?.id) },
+                    onExport = { showExportSheet = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -164,12 +181,16 @@ fun DesignWorkspaceScreen(
         }
     }
 
-    exportResult?.let { result ->
-        ExportResultSheet(
-            result = result,
-            onDismiss = { viewModel.clearExport() },
-        )
-    }
+    DesignExportSheet(
+        visible = showExportSheet,
+        onDismiss = { showExportSheet = false },
+        onExport = { target ->
+            viewModel.requestExport(target)
+        },
+        exportResult = exportResult,
+        onClearExport = { viewModel.clearExport() },
+        isLoading = false,
+    )
 }
 
 @Composable
@@ -254,7 +275,6 @@ private fun BottomPromptBar(
     onPromptTextChanged: (String) -> Unit,
     onSubmit: () -> Unit,
     onExport: () -> Unit,
-    hasExport: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -262,6 +282,12 @@ private fun BottomPromptBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        IconButton(onClick = onExport) {
+            Icon(
+                painter = painterResource(LucideR.drawable.lucide_ic_download),
+                contentDescription = "Export",
+            )
+        }
         OutlinedTextField(
             value = promptText,
             onValueChange = onPromptTextChanged,
@@ -330,61 +356,53 @@ private fun InspectorCard(
 }
 
 @Composable
-private fun ExportResultSheet(
-    result: ExportResult,
-    onDismiss: () -> Unit,
+private fun GenerationErrorView(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Exported Code",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        painter = painterResource(LucideR.drawable.lucide_ic_x),
-                        contentDescription = "Close",
-                    )
-                }
+        Icon(
+            painter = painterResource(LucideR.drawable.lucide_ic_triangle_alert),
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.error,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Design generation failed",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Something went wrong. You can retry or go back to the chat.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onRetry) {
+                Text("Retry")
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            result.files.forEach { file ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = file.path,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Text(
-                            text = file.language,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
-                    }
-                }
+            FilledTonalButton(onClick = onRetry) {
+                Text("Back to chat")
             }
         }
     }
 }
 
-private fun statusLabel(status: DesignDocumentStatus): String = when (status) {
-    DesignDocumentStatus.EMPTY -> "Empty"
-    DesignDocumentStatus.GENERATING -> "Generating..."
-    DesignDocumentStatus.READY -> "Ready"
-    DesignDocumentStatus.ERROR -> "Error"
-    DesignDocumentStatus.OUTDATED_SNAPSHOT -> "Preview may be outdated"
+private fun statusLabel(docStatus: DesignDocumentStatus, genStatus: String): String = when {
+    genStatus == "error" -> "Generation failed"
+    genStatus == "generating" -> "Generating..."
+    genStatus == "rendering_snapshot" -> "Rendering..."
+    else -> when (docStatus) {
+        DesignDocumentStatus.EMPTY -> "Empty"
+        DesignDocumentStatus.GENERATING -> "Generating..."
+        DesignDocumentStatus.READY -> "Ready"
+        DesignDocumentStatus.ERROR -> "Error"
+        DesignDocumentStatus.OUTDATED_SNAPSHOT -> "Preview may be outdated"
+    }
 }
