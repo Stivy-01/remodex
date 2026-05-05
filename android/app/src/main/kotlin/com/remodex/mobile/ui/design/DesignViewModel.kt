@@ -2,6 +2,8 @@ package com.remodex.mobile.ui.design
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.remodex.mobile.BuildConfig
+import com.remodex.mobile.ui.design.canvas.CanvasBridge
 import com.remodex.mobile.ui.design.canvas.CanvasRenderState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +65,20 @@ class DesignViewModel : ViewModel() {
 
     private val _promptText = MutableStateFlow("")
     val promptText: StateFlow<String> = _promptText.asStateFlow()
+
+    val canvasBridge = CanvasBridge(
+        onCanvasReady = { /* WebView initialized */ },
+        onSnapshotReady = { documentId, version, dataUrl ->
+            _snapshotVersion.value = version
+        },
+        onNodeSelected = { node -> _selectedNode.value = node },
+        onSelectionCleared = { _selectedNode.value = null },
+        onCanvasError = { code, message ->
+            if (BuildConfig.DEBUG) {
+                android.util.Log.e("DesignVM", "Canvas error [$code]: $message")
+            }
+        },
+    )
 
     fun onPromptTextChanged(text: String) {
         _promptText.value = text

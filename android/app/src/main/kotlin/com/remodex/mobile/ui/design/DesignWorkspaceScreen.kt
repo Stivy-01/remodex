@@ -23,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -38,8 +37,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
+import com.remodex.mobile.ui.design.canvas.CanvasBridge
 import com.remodex.mobile.ui.design.canvas.CanvasRenderState
 import com.remodex.mobile.ui.design.canvas.CanvasSnapshotViewer
+import com.remodex.mobile.ui.design.canvas.CanvasWebView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,6 +127,7 @@ fun DesignWorkspaceScreen(
                     document = currentDocument!!,
                     uiMode = uiMode,
                     snapshotRenderState = snapshotRenderState,
+                    canvasBridge = viewModel.canvasBridge,
                     onRefreshSnapshot = viewModel::refreshSnapshot,
                     modifier = Modifier.weight(1f),
                 )
@@ -170,6 +172,7 @@ private fun CanvasArea(
     document: DesignDocument,
     uiMode: DesignMode,
     snapshotRenderState: CanvasRenderState,
+    canvasBridge: CanvasBridge,
     onRefreshSnapshot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -186,40 +189,10 @@ private fun CanvasArea(
                 onRefreshSnapshot = onRefreshSnapshot,
                 modifier = Modifier.fillMaxSize(),
             )
-            DesignMode.EDIT -> DesignEditPlaceholder(
+            DesignMode.EDIT -> CanvasWebView(
+                bridge = canvasBridge,
                 modifier = Modifier.fillMaxSize(),
             )
-        }
-    }
-}
-
-@Composable
-private fun DesignEditPlaceholder(modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        ),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = "Edit Mode",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "WebView canvas will load here",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
