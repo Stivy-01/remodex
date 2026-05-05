@@ -136,7 +136,12 @@ fun DesignWorkspaceScreen(
                     selectedNode?.let { node ->
                         InspectorCard(
                             node = node,
-                            onAskAiEdit = { /* TODO: wire editDocument */ },
+                            onAskAiEdit = {
+                                    viewModel.editDesignWithAi(
+                                        prompt = promptText,
+                                        selectedNodeId = node?.id,
+                                    )
+                                },
                             onDismiss = { viewModel.onSelectionCleared() },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -149,7 +154,7 @@ fun DesignWorkspaceScreen(
                     promptText = promptText,
                     onPromptTextChanged = viewModel::onPromptTextChanged,
                     onSubmit = viewModel::onSubmitPrompt,
-                    onExport = { /* TODO: show export sheet */ },
+                    onExport = { viewModel.requestExport(ExportTarget.JETPACK_COMPOSE) },
                     hasExport = exportResult == null,
                     modifier = Modifier
                         .fillMaxWidth()

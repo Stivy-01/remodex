@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.remodex.mobile.BuildConfig
 import com.remodex.mobile.ui.design.canvas.CanvasBridge
 import com.remodex.mobile.ui.design.canvas.CanvasRenderState
+import com.remodex.mobile.ui.design.data.DesignRepository
+import com.remodex.mobile.ui.design.data.MockDesignRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,7 +14,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
-class DesignViewModel : ViewModel() {
+class DesignViewModel(
+    private val repository: DesignRepository = MockDesignRepository(),
+) : ViewModel() {
 
     private val _uiMode = MutableStateFlow(DesignMode.VIEW)
     val uiMode: StateFlow<DesignMode> = _uiMode.asStateFlow()
@@ -105,7 +109,7 @@ class DesignViewModel : ViewModel() {
         )
 
         viewModelScope.launch {
-            val steps = listOf(
+            val stepLabels = listOf(
                 "Understanding prompt",
                 "Creating layout",
                 "Adding components",
@@ -114,54 +118,106 @@ class DesignViewModel : ViewModel() {
                 "Creating snapshot",
             )
 
-            for (i in steps.indices) {
+            for (i in stepLabels.indices) {
                 delay(800)
                 val updated = _generationState.value.steps.toMutableList()
-                updated[i] = GenerationStep(steps[i], GenerationStepStatus.ACTIVE)
+                updated[i] = GenerationStep(stepLabels[i], GenerationStepStatus.ACTIVE)
                 if (i > 0) {
-                    updated[i - 1] = GenerationStep(steps[i - 1], GenerationStepStatus.DONE)
+                    updated[i - 1] = GenerationStep(stepLabels[i - 1], GenerationStepStatus.DONE)
                 }
                 _generationState.value = _generationState.value.copy(steps = updated)
             }
 
             delay(400)
-            val finalSteps = _generationState.value.steps.map {
-                GenerationStep(it.label, GenerationStepStatus.DONE)
-            }
             _generationState.value = _generationState.value.copy(
                 status = "rendering_snapshot",
-                steps = finalSteps,
+                steps = _generationState.value.steps.map {
+                    GenerationStep(it.label, GenerationStepStatus.DONE)
+                },
             )
 
-            delay(600)
-            val docId = "doc_${System.currentTimeMillis()}"
-            val snapshotUrl = "https://picsum.photos/seed/${docId}/800/600"
-            _generationState.value = _generationState.value.copy(
-                status = "done",
-                documentId = docId,
-                documentVersion = 1,
-                snapshotUrl = snapshotUrl,
+            val result = runCatching {
+                repository.generateDesign(
+                    projectId = "mock_project",
+                    prompt = prompt,
+                    target = null,
+                )
+            }
+
+            result.fold(
+                onSuccess = { genState ->
+                    _generationState.value = genState
+                    if (genState.documentId != null) {
+                        _currentDocument.value = DesignDocument(
+                            id = genState.documentId,
+                            projectId = "mock_project",
+                            version = genState.documentVersion,
+                            opFileUrl = null,
+                            localOpJson = null,
+                            snapshotUrl = genState.snapshotUrl,
+                            thumbnailUrl = null,
+                            status = DesignDocumentStatus.READY,
+                        )
+                        _snapshotVersion.value = genState.documentVersion
+                    }
+                },
+                onFailure = { error ->
+                    _generationState.value = _generationState.value.copy(
+                        status = "error",
+                        steps = _generationState.value.steps.map {
+                            if (it.status == GenerationStepStatus.ACTIVE) {
+                                GenerationStep(it.label, GenerationStepStatus.ERROR)
+                            } else {
+                                it
+                            }
+                        },
+                    )
+                },
+            )
+        }
+    }
+
+    fun editDesignWithAi(prompt: String, selectedNodeId: String?) {
+        if (prompt.isBlank() && selectedNodeId == null) return
+        val docId = _currentDocument.value?.id ?: return
+
+        viewModelScope.launch {
+            _generationState.value = GenerationState(
+                generationId = "edit_${System.currentTimeMillis()}",
+                status = "generating",
+                steps = listOf(
+                    GenerationStep("Applying edit", GenerationStepStatus.ACTIVE),
+                    GenerationStep("Rendering preview", GenerationStepStatus.PENDING),
+                ),
             )
 
-            _currentDocument.value = DesignDocument(
-                id = docId,
-                projectId = "mock_project",
-                version = 1,
-                opFileUrl = null,
-                localOpJson = null,
-                snapshotUrl = snapshotUrl,
-                thumbnailUrl = null,
-                status = DesignDocumentStatus.READY,
+            delay(800)
+
+            val result = runCatching {
+                repository.editDocument(docId, prompt, selectedNodeId)
+            }
+
+            result.fold(
+                onSuccess = { genState ->
+                    _generationState.value = genState
+                    val current = _currentDocument.value
+                    if (current != null && genState.snapshotUrl != null) {
+                        _currentDocument.value = current.copy(
+                            version = genState.documentVersion,
+                            snapshotUrl = genState.snapshotUrl,
+                        )
+                    }
+                },
+                onFailure = {
+                    _generationState.value = _generationState.value.copy(status = "error")
+                },
             )
-            _snapshotVersion.value = 1
         }
     }
 
     fun refreshSnapshot() {
         val doc = _currentDocument.value ?: return
-        if (doc.snapshotUrl != null) {
-            _snapshotVersion.value = doc.version
-        }
+        _snapshotVersion.value = doc.version
     }
 
     fun onToggleMode() {
@@ -180,38 +236,14 @@ class DesignViewModel : ViewModel() {
     }
 
     fun requestExport(target: ExportTarget) {
-        _exportResult.value = ExportResult(
-            exportId = "exp_${System.currentTimeMillis()}",
-            files = listOf(
-                ExportFile(
-                    path = "OnboardingScreen.kt",
-                    language = "kotlin",
-                    content = """
-@Composable
-fun OnboardingScreen(
-    onGetStarted: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = "Welcome to RideTracker",
-            style = MaterialTheme.typography.headlineMedium,
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onGetStarted) {
-            Text("Get Started")
+        val docId = _currentDocument.value?.id ?: return
+        viewModelScope.launch {
+            runCatching {
+                repository.exportDocument(docId, target)
+            }.onSuccess {
+                _exportResult.value = it
+            }
         }
-    }
-}
-                    """.trimIndent(),
-                ),
-            ),
-        )
     }
 
     fun clearExport() {
