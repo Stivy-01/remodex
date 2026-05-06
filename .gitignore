@@ -35,6 +35,10 @@ security_best_practices_report.md
 *.swp
 *.swo
 *~
+*.rej
+*.class
+tmp/
+output/
 
 # Minified JS bundles (not part of this project)
 /main.js

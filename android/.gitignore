@@ -11,8 +11,10 @@ local.properties
 captures
 *.apk
 *.aab
+*.class
 key.properties
 upload-keystore.jks
 app/src/main/assets/adi-registration.properties
 ios-android-parity-plan.md
 commit-to-plan-map.md
+.kotlin/
