@@ -55,9 +55,11 @@ internal data class TurnFileChangePresentation(
 }
 
 internal data class TurnSubagentAgentPresentation(
+    val threadId: String,
     val label: String,
     val role: String?,
     val model: String?,
+    val prompt: String?,
     val status: String?,
     val message: String?,
 )
@@ -68,6 +70,8 @@ internal data class TurnSubagentPresentation(
     val promptText: String?,
     val agents: List<TurnSubagentAgentPresentation>,
     val rawText: String,
+    val normalizedTool: String? = null,
+    val status: String? = null,
 )
 
 internal data class TurnCommandExecutionPresentation(
@@ -294,14 +298,18 @@ internal object TurnTimelineRichContentParser {
                 agents =
                     action.agentRows.map { agent ->
                         TurnSubagentAgentPresentation(
+                            threadId = agent.threadId,
                             label = agent.displayLabel,
                             role = agent.role?.trim()?.takeIf { it.isNotEmpty() },
                             model = agent.model?.trim()?.takeIf { it.isNotEmpty() },
+                            prompt = agent.prompt?.trim()?.takeIf { it.isNotEmpty() },
                             status = agent.fallbackStatus?.trim()?.takeIf { it.isNotEmpty() },
                             message = agent.fallbackMessage?.trim()?.takeIf { it.isNotEmpty() },
                         )
                     },
                 rawText = rawText,
+                normalizedTool = action.normalizedTool,
+                status = action.status.trim().takeIf { it.isNotEmpty() },
             )
         }
 

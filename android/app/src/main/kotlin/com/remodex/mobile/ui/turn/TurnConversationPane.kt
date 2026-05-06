@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,8 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -83,6 +86,8 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,6 +100,9 @@ private const val TIMELINE_INITIAL_RENDER_TAIL = 48
 private const val TIMELINE_LOAD_EARLIER_PAGE = 80
 private const val TIMELINE_STAGING_THRESHOLD = 72
 private const val STARTUP_TRACE_TAG = "RemodexStartup"
+private const val SMART_SCROLL_CTA_SCROLLING_DWELL_MS = 1_000L
+private const val SMART_SCROLL_CTA_STOP_HIDE_DELAY_MS = 1_000L
+private const val SMART_SCROLL_FADE_JUMP_DISTANCE_ITEMS = 24
 /** Shaves a few dp off IME bottom padding so the composer sits slightly closer to the keyboard. */
 private val TurnConversationImeBottomTrim = 12.dp
 
@@ -145,6 +153,8 @@ fun TurnConversationPane(
     var availableSkills by remember(threadId) { mutableStateOf<List<SkillAutocompleteSuggestion>>(emptyList()) }
     var availableFileMatches by remember(threadId) { mutableStateOf<List<com.remodex.mobile.core.model.CodexFuzzyFileMatch>>(emptyList()) }
     var voicePhase by remember(threadId) { mutableStateOf(TurnVoicePhase.Idle) }
+    var voiceAudioLevels by remember(threadId) { mutableStateOf<List<Float>>(emptyList()) }
+    var voiceRecordingDurationSeconds by remember(threadId) { mutableStateOf(0.0) }
     var showForkThreadSheet by remember(threadId) { mutableStateOf(false) }
     var showFeedbackDialog by remember(threadId) { mutableStateOf(false) }
     var showWorktreeHandoffSheet by remember(threadId) { mutableStateOf(false) }
@@ -160,6 +170,18 @@ fun TurnConversationPane(
     }
     var applyingUndoChangeSetIds by remember(threadId) { mutableStateOf(emptySet<String>()) }
     var inlineUndoError by remember(threadId) { mutableStateOf<String?>(null) }
+
+    fun appendVoiceAudioLevel(level: Float) {
+        scope.launch {
+            if (voicePhase != TurnVoicePhase.Recording) return@launch
+            voiceAudioLevels = (voiceAudioLevels + level.coerceIn(0f, 1f)).takeLast(240)
+        }
+    }
+
+    fun resetVoiceMeteringState() {
+        voiceAudioLevels = emptyList()
+        voiceRecordingDurationSeconds = 0.0
+    }
 
     val activeThread =
         remember(threadId, threads) {
@@ -549,10 +571,15 @@ fun TurnConversationPane(
             if (granted) {
                 scope.launch {
                     if (voicePhase != TurnVoicePhase.Idle) return@launch
-                    val ok = withContext(Dispatchers.IO) { voiceRecorder.start() }
+                    resetVoiceMeteringState()
+                    val ok =
+                        withContext(Dispatchers.IO) {
+                            voiceRecorder.start(::appendVoiceAudioLevel)
+                        }
                     if (ok) {
                         voicePhase = TurnVoicePhase.Recording
                     } else {
+                        resetVoiceMeteringState()
                         lastError = voiceRecorderFailedMessage
                     }
                 }
@@ -597,11 +624,21 @@ fun TurnConversationPane(
         transcribeJob = null
         voiceRecorder.cancel()
         voicePhase = TurnVoicePhase.Idle
+        resetVoiceMeteringState()
         lastError = null
         draft = ""
         composerAttachments = emptyList()
         mentionChips = emptyList()
         planAccessoryExpanded = false
+    }
+
+    LaunchedEffect(threadId, voicePhase) {
+        if (voicePhase != TurnVoicePhase.Recording) return@LaunchedEffect
+        val startedAtNanos = System.nanoTime()
+        while (isActive && voicePhase == TurnVoicePhase.Recording) {
+            voiceRecordingDurationSeconds = (System.nanoTime() - startedAtNanos) / 1_000_000_000.0
+            delay(100)
+        }
     }
 
     LaunchedEffect(threadId, gitCwd, connectionState, ready, gitBranchReloadNonce) {
@@ -711,6 +748,17 @@ fun TurnConversationPane(
     val listState = rememberLazyListState()
     val latestMessageId = visibleMessages.lastOrNull()?.id
     var lastAutoScrollThreadId by remember { mutableStateOf<String?>(null) }
+    var latestSeenAtBottomMessageId by rememberSaveable(threadId) { mutableStateOf(latestMessageId) }
+    var previousFirstVisibleItemIndex by remember(threadId) { mutableIntStateOf(0) }
+    var scrollDirection by remember(threadId) { mutableIntStateOf(0) }
+    var scrollDirectionWindowStartedAtMs by remember(threadId) { mutableStateOf(System.currentTimeMillis()) }
+    var scrollDirectionChangeCount by remember(threadId) { mutableIntStateOf(0) }
+    var showSmartScrollCtaForSustainedScroll by remember(threadId) { mutableStateOf(false) }
+    var timelineContentVisible by remember(threadId) { mutableStateOf(true) }
+    val timelineContentAlpha by animateFloatAsState(
+        targetValue = if (timelineContentVisible) 1f else 0.08f,
+        label = "timeline-content-alpha",
+    )
     val shouldFollowBottom by remember {
         derivedStateOf {
             shouldFollowTimelineBottom(
@@ -719,8 +767,56 @@ fun TurnConversationPane(
             )
         }
     }
+    val firstVisibleListItemIndex by remember {
+        derivedStateOf { listState.firstVisibleItemIndex }
+    }
+    val lastVisibleListItemIndex by remember {
+        derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+    }
+    val totalListItemCount by remember {
+        derivedStateOf { listState.layoutInfo.totalItemsCount }
+    }
+    val timelineListItemOffset =
+        if (hiddenEarlierCount > 0 || canLoadOlderRemoteHistory) {
+            1
+        } else {
+            0
+        }
+    val chatAnchors =
+        remember(visibleMessages, timelineListItemOffset) {
+            buildChatAnchors(
+                messages = visibleMessages,
+                listItemOffset = timelineListItemOffset,
+            )
+        }
+    val smartScrollNavigationState =
+        remember(
+            totalListItemCount,
+            firstVisibleListItemIndex,
+            lastVisibleListItemIndex,
+            chatAnchors,
+            shouldFollowBottom,
+            latestSeenAtBottomMessageId,
+            latestMessageId,
+            scrollDirectionChangeCount,
+        ) {
+            buildSmartScrollNavigationState(
+                totalItemsCount = totalListItemCount,
+                firstVisibleItemIndex = firstVisibleListItemIndex,
+                lastVisibleItemIndex = lastVisibleListItemIndex,
+                anchors = chatAnchors,
+                isNearTop = firstVisibleListItemIndex <= timelineListItemOffset + 1,
+                isNearBottom = shouldFollowBottom,
+                hasNewMessagesBelow =
+                    latestMessageId != null &&
+                        latestSeenAtBottomMessageId != latestMessageId &&
+                        !shouldFollowBottom,
+                directionChangeCount = scrollDirectionChangeCount,
+            )
+        }
     LaunchedEffect(threadId) {
         lastAutoScrollThreadId = threadId
+        latestSeenAtBottomMessageId = latestMessageId
         if (visibleMessages.isNotEmpty()) {
             listState.scrollToItem(visibleMessages.lastIndex)
             if (BuildConfig.DEBUG) {
@@ -729,6 +825,50 @@ fun TurnConversationPane(
                     "timeline scrolled thread=$threadId visible=${visibleMessages.size} hiddenEarlier=$hiddenEarlierCount reason=thread",
                 )
             }
+        }
+    }
+    LaunchedEffect(threadId, listState) {
+        previousFirstVisibleItemIndex = listState.firstVisibleItemIndex
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { firstVisible ->
+                val now = System.currentTimeMillis()
+                if (now - scrollDirectionWindowStartedAtMs > 10_000L) {
+                    scrollDirectionWindowStartedAtMs = now
+                    scrollDirectionChangeCount = 0
+                }
+                val nextDirection =
+                    when {
+                        firstVisible > previousFirstVisibleItemIndex -> 1
+                        firstVisible < previousFirstVisibleItemIndex -> -1
+                        else -> scrollDirection
+                    }
+                if (nextDirection != 0 && scrollDirection != 0 && nextDirection != scrollDirection) {
+                    scrollDirectionChangeCount++
+                }
+                if (nextDirection != 0) {
+                    scrollDirection = nextDirection
+                }
+                previousFirstVisibleItemIndex = firstVisible
+            }
+    }
+    LaunchedEffect(threadId, listState) {
+        showSmartScrollCtaForSustainedScroll = false
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { isScrolling ->
+                if (isScrolling) {
+                    delay(SMART_SCROLL_CTA_SCROLLING_DWELL_MS)
+                    showSmartScrollCtaForSustainedScroll = listState.isScrollInProgress
+                } else {
+                    delay(SMART_SCROLL_CTA_STOP_HIDE_DELAY_MS)
+                    showSmartScrollCtaForSustainedScroll = listState.isScrollInProgress
+                }
+            }
+    }
+    LaunchedEffect(latestMessageId, shouldFollowBottom) {
+        if (shouldFollowBottom) {
+            latestSeenAtBottomMessageId = latestMessageId
         }
     }
     LaunchedEffect(latestMessageId, visibleMessages.size, shouldFollowBottom) {
@@ -1052,7 +1192,44 @@ fun TurnConversationPane(
                         connectionState is ConnectionState.Connected &&
                         !isThreadRunning &&
                         !forkingThread,
-                modifier = Modifier.fillMaxSize(),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .alpha(timelineContentAlpha),
+            )
+            SmartScrollNavigationCta(
+                state =
+                    if (showSmartScrollCtaForSustainedScroll) {
+                        smartScrollNavigationState
+                    } else {
+                        SmartScrollNavigationState()
+                    },
+                onNavigate = { requestedIndex ->
+                    val targetIndex =
+                        requestedIndex.coerceIn(
+                            minimumValue = 0,
+                            maximumValue = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0),
+                    )
+                    scope.launch {
+                        val distanceItems = kotlin.math.abs(targetIndex - listState.firstVisibleItemIndex)
+                        if (distanceItems >= SMART_SCROLL_FADE_JUMP_DISTANCE_ITEMS) {
+                            timelineContentVisible = false
+                            delay(90L)
+                            listState.scrollToItem(targetIndex)
+                            delay(120L)
+                            timelineContentVisible = true
+                        } else {
+                            listState.animateScrollToItemRelaxed(targetIndex)
+                        }
+                        if (targetIndex >= (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) {
+                            latestSeenAtBottomMessageId = latestMessageId
+                        }
+                    }
+                },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 14.dp),
             )
         }
         lastError?.let { err ->
@@ -1418,6 +1595,8 @@ fun TurnConversationPane(
                 }
             },
             voiceUiEnabled = voiceInteractionEnabled,
+            voiceAudioLevels = voiceAudioLevels,
+            voiceRecordingDurationSeconds = voiceRecordingDurationSeconds,
             onVoiceClick = {
                 when (voicePhase) {
                     TurnVoicePhase.Idle -> {
@@ -1430,10 +1609,15 @@ fun TurnConversationPane(
                             } else {
                                 scope.launch {
                                     if (voicePhase != TurnVoicePhase.Idle) return@launch
-                                    val ok = withContext(Dispatchers.IO) { voiceRecorder.start() }
+                                    resetVoiceMeteringState()
+                                    val ok =
+                                        withContext(Dispatchers.IO) {
+                                            voiceRecorder.start(::appendVoiceAudioLevel)
+                                        }
                                     if (ok) {
                                         voicePhase = TurnVoicePhase.Recording
                                     } else {
+                                        resetVoiceMeteringState()
                                         lastError = voiceRecorderFailedMessage
                                     }
                                 }
@@ -1450,6 +1634,7 @@ fun TurnConversationPane(
                             val pair =
                                 encoded.getOrElse { err ->
                                     voicePhase = TurnVoicePhase.Idle
+                                    resetVoiceMeteringState()
                                     if (err.message != "not_recording") {
                                         lastError =
                                             when (err.message) {
@@ -1460,6 +1645,7 @@ fun TurnConversationPane(
                                     return@launch
                                 }
                             voicePhase = TurnVoicePhase.Transcribing
+                            resetVoiceMeteringState()
                             transcribeJob =
                                 scope.launch {
                                     try {
@@ -1492,6 +1678,14 @@ fun TurnConversationPane(
                         }
                     }
                     TurnVoicePhase.Transcribing -> Unit
+                }
+            },
+            onCancelVoiceRecording = {
+                scope.launch {
+                    if (voicePhase != TurnVoicePhase.Recording) return@launch
+                    withContext(Dispatchers.IO) { voiceRecorder.cancel() }
+                    voicePhase = TurnVoicePhase.Idle
+                    resetVoiceMeteringState()
                 }
             },
             composerEnvironment = {
@@ -1533,6 +1727,7 @@ fun TurnConversationPane(
                 transcribeJob = null
                 voiceRecorder.cancel()
                 voicePhase = TurnVoicePhase.Idle
+                resetVoiceMeteringState()
                 lastError = null
                 val activeReviewTarget = reviewTarget
                 if (activeReviewTarget != null) {

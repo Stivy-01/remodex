@@ -551,6 +551,18 @@ internal class IncomingEventRouter(
                     )
                 }
             }
+            CodexMessageKind.subagentAction -> {
+                val action = decoded.subagentAction ?: return
+                scope.launch {
+                    messageTimeline.upsertSubagentActionMessage(
+                        threadId = threadId,
+                        turnId = turnId,
+                        itemId = itemId,
+                        action = action,
+                        isStreaming = false,
+                    )
+                }
+            }
             else -> handleLegacyAgentCompleted(p)
         }
     }

@@ -1,5 +1,6 @@
 package com.remodex.mobile.ui.turn
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,7 @@ import com.remodex.mobile.core.model.CommandExecutionDetails
 import com.remodex.mobile.core.model.TurnThinkingDisclosureHints
 import com.remodex.mobile.ui.agent.FileEditRow
 import com.remodex.mobile.ui.agent.ToolCallRow
+import com.remodex.mobile.ui.theme.isAgentLightChrome
 
 /**
  * Timeline turn row: chat + dedicated layouts per [CodexMessageKind] (J.4/J.6).
@@ -49,15 +51,22 @@ fun TurnMessageRow(
                 }
         }
     val colors = MaterialTheme.colorScheme
+    val isLightChrome = isAgentLightChrome()
     val bubbleColor =
         when (message.role) {
-            CodexMessageRole.user -> colors.surfaceVariant.copy(alpha = 0.55f)
+            CodexMessageRole.user ->
+                if (isLightChrome) {
+                    colors.surfaceVariant.copy(alpha = 1f)
+                } else {
+                    colors.surfaceVariant.copy(alpha = 0.55f)
+                }
             CodexMessageRole.assistant -> colors.surface.copy(alpha = 0.0f)
             CodexMessageRole.system ->
                 when (message.kind) {
                     CodexMessageKind.thinking -> Color.Transparent
                     CodexMessageKind.fileChange -> Color.Transparent
                     CodexMessageKind.commandExecution -> Color.Transparent
+                    CodexMessageKind.subagentAction -> Color.Transparent
                     CodexMessageKind.plan -> colors.primaryContainer.copy(alpha = 0.22f)
                     CodexMessageKind.pendingApproval,
                     CodexMessageKind.userInputPrompt,
@@ -72,6 +81,12 @@ fun TurnMessageRow(
             CodexMessageRole.assistant -> colors.onBackground
             CodexMessageRole.system -> colors.onSurfaceVariant
         }
+    val bubbleBorder =
+        if (message.role == CodexMessageRole.user && isLightChrome) {
+            BorderStroke(0.5.dp, colors.outline.copy(alpha = 0.58f))
+        } else {
+            null
+        }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -80,6 +95,7 @@ fun TurnMessageRow(
         Surface(
             shape = MaterialTheme.shapes.medium,
             color = bubbleColor,
+            border = bubbleBorder,
             modifier =
                 if (isTimelineToolRow) {
                     Modifier

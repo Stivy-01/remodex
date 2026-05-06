@@ -497,6 +497,7 @@ private fun GitActionsDropdown(
             TurnGitActionKind.push,
             TurnGitActionKind.commitAndPush,
             TurnGitActionKind.createPR,
+            TurnGitActionKind.previewCommitPushToast,
         ).forEach { kind ->
             DropdownMenuItem(
                 text = { Text(kind.title) },

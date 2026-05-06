@@ -78,6 +78,8 @@ import com.remodex.mobile.ui.agent.ConversationHeader
 import com.remodex.mobile.ui.agent.SidebarDrawerContent
 import com.remodex.mobile.ui.agent.truncatePathMiddle
 import com.remodex.mobile.ui.home.BridgeUpdateSheet
+import com.remodex.mobile.ui.home.GitActionProgressBannerState
+import com.remodex.mobile.ui.home.GitActionProgressPhase
 import com.remodex.mobile.ui.home.RootViewModel
 import com.remodex.mobile.ui.home.ThreadCompletionBanner
 import com.remodex.mobile.ui.navigation.AppNavHost
@@ -144,6 +146,8 @@ fun MainShell(
     var gitActionBusy by remember { mutableStateOf(false) }
     var gitActionError by remember { mutableStateOf<String?>(null) }
     var gitActionProgressMessage by remember { mutableStateOf<String?>(null) }
+    var gitActionProgressPhase by remember { mutableStateOf<GitActionProgressPhase?>(null) }
+    var gitActionProgressIncludesPullRequest by remember { mutableStateOf(false) }
     var gitActionSheetMode by remember { mutableStateOf<GitActionSheetMode?>(null) }
     var showGitInitPrompt by remember { mutableStateOf(false) }
     var gitInitError by remember { mutableStateOf<String?>(null) }
@@ -245,12 +249,18 @@ fun MainShell(
                     (!isWorktreeProject && (associatedWorktreePath != null || defaultGitBaseBranch != null))
             )
     val gitToastMessage =
-        gitActionProgressMessage
-            ?: if (isLoadingRepoDiff && showGitControls) {
+        if (isLoadingRepoDiff && showGitControls && gitActionProgressPhase == null) {
                 gitStatusLoadingToast
             } else {
                 null
             }
+    val gitProgressToast =
+        gitActionProgressPhase?.let {
+            GitActionProgressBannerState(
+                phase = it,
+                includesPullRequest = gitActionProgressIncludesPullRequest,
+            )
+        }
 
     fun enqueueRepoDiffFullTreePrefetch() {
         val tid = activeThreadId
@@ -266,9 +276,14 @@ fun MainShell(
                         repoDiffSheetFullPatch = it.patch
                     }
                     .onFailure {
+                        val rawMessage = it.message.orEmpty()
+                        val userVisibleMessage = rawMessage.withoutGitLineEndingWarnings().ifBlank { null }
                         repoDiffSheetFullError =
-                            it.message?.ifBlank { null }
-                                ?: context.getString(R.string.git_repo_diff_load_error)
+                            if (rawMessage.isNotBlank() && userVisibleMessage == null) {
+                                null
+                            } else {
+                                userVisibleMessage ?: context.getString(R.string.git_repo_diff_load_error)
+                            }
                     }
                 repoDiffSheetFullLoading = false
             }
@@ -314,6 +329,7 @@ fun MainShell(
         onNothingToCommit: () -> Unit,
     ) {
         gitActionProgressMessage = null
+        gitActionProgressPhase = null
         when {
             e is GitActionsError.BridgeFailure && e.errorCode == "nothing_to_commit" -> onNothingToCommit()
             e is GitActionsError.BridgeFailure &&
@@ -421,20 +437,28 @@ fun MainShell(
                         gitActionProgressMessage = "Committed changes."
                     }
                     GitActionNextStep.commitAndPush -> {
-                        gitActionProgressMessage = "Committing changes..."
-                        git.commit(resolveCommitMessage(git, submission.commitMessage))
-                        gitActionProgressMessage = "Pushing branch..."
+                        gitActionProgressMessage = null
+                        gitActionProgressIncludesPullRequest = false
+                        gitActionProgressPhase = GitActionProgressPhase.resolvingCommitMessage
+                        val commitMessage = resolveCommitMessage(git, submission.commitMessage)
+                        gitActionProgressPhase = GitActionProgressPhase.committing
+                        git.commit(commitMessage)
+                        gitActionProgressPhase = GitActionProgressPhase.pushing
                         git.push()
-                        gitActionProgressMessage = "Committed and pushed."
+                        gitActionProgressPhase = GitActionProgressPhase.done
                     }
                     GitActionNextStep.commitPushAndPullRequest -> {
-                        gitActionProgressMessage = "Committing changes..."
-                        git.commit(resolveCommitMessage(git, submission.commitMessage))
-                        gitActionProgressMessage = "Pushing branch..."
+                        gitActionProgressMessage = null
+                        gitActionProgressIncludesPullRequest = true
+                        gitActionProgressPhase = GitActionProgressPhase.resolvingCommitMessage
+                        val commitMessage = resolveCommitMessage(git, submission.commitMessage)
+                        gitActionProgressPhase = GitActionProgressPhase.committing
+                        git.commit(commitMessage)
+                        gitActionProgressPhase = GitActionProgressPhase.pushing
                         git.push()
-                        gitActionProgressMessage = "Preparing pull request..."
+                        gitActionProgressPhase = GitActionProgressPhase.preparingPullRequest
                         openPullRequestUrl(git, submission)
-                        gitActionProgressMessage = "Pull request draft opened."
+                        gitActionProgressPhase = GitActionProgressPhase.done
                     }
                     GitActionNextStep.push -> {
                         gitActionProgressMessage = "Pushing branch..."
@@ -464,12 +488,14 @@ fun MainShell(
         }
     }
 
-    LaunchedEffect(gitActionProgressMessage, gitActionBusy) {
+    LaunchedEffect(gitActionProgressMessage, gitActionProgressPhase, gitActionBusy) {
         val message = gitActionProgressMessage
-        if (!gitActionBusy && !message.isNullOrBlank()) {
+        val phase = gitActionProgressPhase
+        if (!gitActionBusy && (!message.isNullOrBlank() || phase == GitActionProgressPhase.done)) {
             delay(3_500)
-            if (gitActionProgressMessage == message) {
+            if (gitActionProgressMessage == message && gitActionProgressPhase == phase) {
                 gitActionProgressMessage = null
+                gitActionProgressPhase = null
             }
         }
     }
@@ -730,6 +756,24 @@ fun MainShell(
                 gitActionSheetMode = GitActionSheetMode.createPullRequest
                 return
             }
+            TurnGitActionKind.previewCommitPushToast -> {
+                if (gitActionBusy) return
+                scope.launch {
+                    gitActionBusy = true
+                    gitActionError = null
+                    gitActionProgressMessage = null
+                    gitActionProgressIncludesPullRequest = false
+                    gitActionProgressPhase = GitActionProgressPhase.resolvingCommitMessage
+                    delay(900)
+                    gitActionProgressPhase = GitActionProgressPhase.committing
+                    delay(900)
+                    gitActionProgressPhase = GitActionProgressPhase.pushing
+                    delay(900)
+                    gitActionProgressPhase = GitActionProgressPhase.done
+                    gitActionBusy = false
+                }
+                return
+            }
             else -> Unit
         }
         scope.launch {
@@ -953,23 +997,25 @@ fun MainShell(
                         onReconnectSavedPairing = viewModel::reconnectSavedPairingManually,
                         onWakeSavedComputer = viewModel::wakeSavedComputerDisplay,
                         onOpenPairingScanner = onOpenPairingScanner,
-                        onNavigateToDesign = { navController.navigate(AppRoutes.Design) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
                 if (showShellHeader) {
                     ThreadCompletionBanner(
                         bannerMessage = gitToastMessage,
+                        gitProgress = gitProgressToast,
                         onTap = { },
                         onDismiss = {
                             if (gitActionProgressMessage != null) {
                                 gitActionProgressMessage = null
                             }
+                            if (gitActionProgressPhase != null) {
+                                gitActionProgressPhase = null
+                            }
                         },
                         modifier =
                             Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 118.dp),
+                                .align(Alignment.TopCenter),
                     )
                 }
             }
@@ -1304,3 +1350,14 @@ private data class PendingGitOperation(
     val cwd: String,
     val submission: GitActionSheetSubmission? = null,
 )
+
+private fun String.withoutGitLineEndingWarnings(): String =
+    lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .filterNot { it.isGitLineEndingWarning() }
+        .joinToString("\n")
+
+private fun String.isGitLineEndingWarning(): Boolean =
+    startsWith("warning: in the working copy of ") &&
+        contains("LF will be replaced by CRLF the next time Git touches it")

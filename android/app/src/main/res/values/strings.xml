@@ -99,6 +99,7 @@
     <string name="turn_send_cd">Send</string>
     <string name="turn_voice_mic_cd">Voice input</string>
     <string name="turn_voice_stop_cd">Stop recording</string>
+    <string name="turn_voice_cancel_recording_cd">Cancel voice recording</string>
     <string name="turn_voice_transcribing_cd">Transcribing</string>
     <string name="turn_voice_mic_permission_denied">Microphone permission is required for voice input.</string>
     <string name="turn_voice_recorder_failed">Could not start the microphone. Try again.</string>

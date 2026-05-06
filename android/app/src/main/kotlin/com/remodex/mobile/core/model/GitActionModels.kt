@@ -352,6 +352,7 @@ enum class TurnGitActionKind {
     push,
     commitAndPush,
     createPR,
+    previewCommitPushToast,
     discardRuntimeChangesAndSync;
 
     val title: String
@@ -363,6 +364,7 @@ enum class TurnGitActionKind {
                 push -> "Push"
                 commitAndPush -> "Commit & Push"
                 createPR -> "Create PR"
+                previewCommitPushToast -> "Preview Commit & Push Toast"
                 discardRuntimeChangesAndSync -> "Discard Local Changes"
             }
 }

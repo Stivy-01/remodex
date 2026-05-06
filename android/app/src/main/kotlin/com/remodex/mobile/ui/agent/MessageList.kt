@@ -2,6 +2,7 @@ package com.remodex.mobile.ui.agent
 
 import android.content.ClipData
 import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -10,11 +11,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -22,11 +26,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
@@ -37,10 +47,12 @@ import androidx.compose.ui.unit.dp
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.AIChangeSet
 import com.remodex.mobile.core.model.CodexMessage
+import com.remodex.mobile.core.model.CodexMessageDeliveryState
 import com.remodex.mobile.core.model.CodexMessageRole
 import com.remodex.mobile.core.model.CommandExecutionDetails
 import com.remodex.mobile.ui.turn.TurnMessageRow
 import com.remodex.mobile.ui.turn.TurnTimelineGroupedRunsRow
+import java.time.Duration
 import kotlinx.coroutines.launch
 
 /**
@@ -99,7 +111,8 @@ fun MessageList(
     val lastAssistantDisplayIndex =
         remember(timelineItems) {
             timelineItems.indexOfLast { item ->
-                item is TimelineListItem.Single && item.message.role == CodexMessageRole.assistant
+                (item is TimelineListItem.Single && item.message.role == CodexMessageRole.assistant) ||
+                    (item is TimelineListItem.MessageChunk && item.message.role == CodexMessageRole.assistant)
             }
         }
     val lastAssistantText =
@@ -170,7 +183,9 @@ fun MessageList(
                     key = { _, item -> item.stableKey },
                     contentType = { _, item ->
                         when (item) {
-                            is TimelineListItem.Single -> item.message.role
+                            is TimelineListItem.Single -> item.message.timelineContentType()
+                            is TimelineListItem.MessageChunk -> "assistant_chat_chunk"
+                            is TimelineListItem.AssistantWorkGroup -> "assistant_work_group"
                             is TimelineListItem.CommandExecutionGroup -> "timeline_cmd_group"
                             is TimelineListItem.FileChangeGroup -> "timeline_fc_group"
                         }
@@ -183,6 +198,14 @@ fun MessageList(
                         when (item) {
                             is TimelineListItem.Single ->
                                 messageContent(item.message)
+                            is TimelineListItem.MessageChunk ->
+                                messageContent(item.toRenderMessage())
+                            is TimelineListItem.AssistantWorkGroup ->
+                                AssistantWorkGroupRow(
+                                    group = item,
+                                    messageContent = messageContent,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             is TimelineListItem.CommandExecutionGroup ->
                                 TurnTimelineGroupedRunsRow(
                                     groupKey = item.stableKey,
@@ -274,5 +297,95 @@ fun MessageList(
                 }
             }
         }
+    }
+}
+
+private fun CodexMessage.timelineContentType(): String =
+    "${role.name}_${kind.name}"
+
+private fun TimelineListItem.MessageChunk.toRenderMessage(): CodexMessage =
+    message.copy(
+        id = stableKey,
+        text = chunkText,
+        isStreaming = message.isStreaming && isLastChunk,
+        attachments =
+            if (isFirstChunk) {
+                message.attachments
+            } else {
+                emptyList()
+            },
+        deliveryState =
+            if (isLastChunk) {
+                message.deliveryState
+            } else {
+                CodexMessageDeliveryState.confirmed
+            },
+    )
+
+@Composable
+private fun AssistantWorkGroupRow(
+    group: TimelineListItem.AssistantWorkGroup,
+    messageContent: @Composable (CodexMessage) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by rememberSaveable(group.stableKey) { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    Column(modifier = modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Worked for ${formatWorkDuration(group.duration)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant.copy(alpha = 0.74f),
+            )
+            Text(
+                text = if (expanded) "v" else ">",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant.copy(alpha = 0.62f),
+            )
+        }
+        HorizontalDivider(color = colors.outline.copy(alpha = 0.14f))
+        if (expanded) {
+            Surface(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .padding(top = 6.dp),
+                shape = MaterialTheme.shapes.small,
+                color = colors.surface.copy(alpha = 0.0f),
+            ) {
+                Column(
+                    modifier =
+                        Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    group.messages.forEach { message ->
+                        messageContent(message)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatWorkDuration(duration: Duration?): String {
+    val seconds = duration?.seconds?.coerceAtLeast(0) ?: 0
+    if (seconds < 60) return "${seconds.coerceAtLeast(1)}s"
+    val minutes = seconds / 60
+    val remainder = seconds % 60
+    return if (remainder == 0L) {
+        "${minutes}m"
+    } else {
+        "${minutes}m ${remainder}s"
     }
 }

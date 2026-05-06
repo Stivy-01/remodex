@@ -20,6 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +46,9 @@ import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.remodex.mobile.R
 import kotlinx.coroutines.launch
+
+private const val CODE_BLOCK_PREVIEW_MAX_LINES = 160
+private const val CODE_BLOCK_PREVIEW_MAX_CHARS = 8_000
 
 /**
  * J.5/J.20 — Markdown M3 + syntax highlight; code blocks with language header and copy action.
@@ -169,6 +176,16 @@ private fun CodeBlockCard(
     onCopy: (String) -> Unit,
 ) {
     if (raw.isEmpty()) return
+    var expanded by rememberSaveable(raw) { mutableStateOf(false) }
+    val preview =
+        remember(raw, expanded) {
+            if (expanded) {
+                raw
+            } else {
+                codeBlockPreview(raw)
+            }
+        }
+    val isTruncated = preview.length < raw.length
     val colors = MaterialTheme.colorScheme
     val normalizedLanguage = language?.trim()?.ifBlank { null }
     val languageLabel = normalizedLanguage ?: stringResource(R.string.turn_markdown_code_unknown)
@@ -212,14 +229,47 @@ private fun CodeBlockCard(
                     .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
         ) {
             Text(
-                text = raw,
+                text = preview,
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
                 color = colors.onSurface,
                 softWrap = false,
             )
         }
+        if (isTruncated) {
+            TextButton(
+                onClick = { expanded = true },
+                modifier =
+                    Modifier
+                        .align(Alignment.End)
+                        .padding(end = 8.dp, bottom = 4.dp),
+            ) {
+                Text("Show full block")
+            }
+        }
     }
+}
+
+private fun codeBlockPreview(raw: String): String {
+    if (raw.length <= CODE_BLOCK_PREVIEW_MAX_CHARS && raw.count { it == '\n' } < CODE_BLOCK_PREVIEW_MAX_LINES) {
+        return raw
+    }
+    val lines = raw.lineSequence().take(CODE_BLOCK_PREVIEW_MAX_LINES).toList()
+    val byLines = lines.joinToString("\n")
+    val clipped =
+        if (byLines.length > CODE_BLOCK_PREVIEW_MAX_CHARS) {
+            byLines.take(CODE_BLOCK_PREVIEW_MAX_CHARS)
+        } else {
+            byLines
+        }
+    val hiddenLines = (raw.count { it == '\n' } + 1 - lines.size).coerceAtLeast(0)
+    val hiddenSuffix =
+        if (hiddenLines > 0) {
+            "\n... $hiddenLines more lines hidden"
+        } else {
+            "\n... block truncated"
+        }
+    return clipped.trimEnd() + hiddenSuffix
 }
 
 internal sealed interface MarkdownFenceSegment {

@@ -5,7 +5,10 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import java.util.Collections
 import kotlin.concurrent.thread
+import kotlin.math.log10
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Minimal [AudioRecord] capture → 16-bit mono PCM at device rate → resample to [VoiceWavEncoding.TARGET_SAMPLE_RATE_HZ] WAV.
@@ -19,7 +22,7 @@ class BridgeVoiceRecorder {
     private val chunkList = Collections.synchronizedList(mutableListOf<ShortArray>())
     private var inputSampleRateHz = 0
 
-    fun start(): Boolean {
+    fun start(onAudioLevel: ((Float) -> Unit)? = null): Boolean {
         synchronized(this) {
             if (captureRunning) return false
             chunkList.clear()
@@ -29,7 +32,7 @@ class BridgeVoiceRecorder {
             captureRunning = true
             captureThread =
                 thread(start = true, name = "remodex-voice") {
-                    runCapture(rec)
+                    runCapture(rec, onAudioLevel)
                 }
             return true
         }
@@ -93,14 +96,20 @@ class BridgeVoiceRecorder {
         inputSampleRateHz = 0
     }
 
-    private fun runCapture(rec: AudioRecord) {
+    private fun runCapture(
+        rec: AudioRecord,
+        onAudioLevel: ((Float) -> Unit)?,
+    ) {
         try {
             rec.startRecording()
             val buf = ShortArray(2048)
             while (captureRunning) {
                 val n = rec.read(buf, 0, buf.size)
                 when {
-                    n > 0 -> chunkList.add(buf.copyOf(n))
+                    n > 0 -> {
+                        chunkList.add(buf.copyOf(n))
+                        onAudioLevel?.invoke(normalizedRmsLevel(buf, n))
+                    }
                     n == AudioRecord.ERROR_INVALID_OPERATION || n == AudioRecord.ERROR_BAD_VALUE -> break
                 }
             }
@@ -115,6 +124,21 @@ class BridgeVoiceRecorder {
             } catch (_: Exception) {
             }
         }
+    }
+
+    private fun normalizedRmsLevel(
+        samples: ShortArray,
+        count: Int,
+    ): Float {
+        if (count <= 0) return 0f
+        var sumOfSquares = 0.0
+        for (i in 0 until count) {
+            val sample = samples[i] / 32768.0
+            sumOfSquares += sample * sample
+        }
+        val rms = sqrt(sumOfSquares / count)
+        val dB = 20.0 * log10(max(rms, 1e-6))
+        return min(1.0, max(0.0, (dB + 50.0) / 50.0)).toFloat()
     }
 
     private fun openAudioRecord(): Pair<AudioRecord, Int>? {

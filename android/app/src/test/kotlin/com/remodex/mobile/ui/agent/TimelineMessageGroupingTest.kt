@@ -106,6 +106,62 @@ class TimelineMessageGroupingTest {
     }
 
     @Test
+    fun longAssistantMessage_splitsIntoStableChunks() {
+        val assistant =
+            CodexMessage(
+                id = "long",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = (1..140).joinToString("\n\n") { "Paragraph $it with enough text to make this response large." },
+                createdAt = t0,
+            )
+
+        val items = listOf(assistant).toTimelineListItems()
+
+        assertTrue(items.size > 1)
+        assertIs<TimelineListItem.MessageChunk>(items.first()).also {
+            assertEquals("long-chunk-0", it.stableKey)
+            assertTrue(it.isFirstChunk)
+        }
+    }
+
+    @Test
+    fun longAssistantSplitter_preservesFencedCodeBlock() {
+        val code = (1..260).joinToString("\n") { "println($it)" }
+        val text = "Intro\n\n```kotlin\n$code\n```\n\nOutro " + "x".repeat(4000)
+
+        val chunks = splitAssistantMarkdownForTimeline(text)
+
+        assertTrue(chunks.any { it.contains("```kotlin") && it.contains("\n```") })
+        assertEquals(1, chunks.count { it.contains("```kotlin") })
+    }
+
+    @Test
+    fun assistantWorkGroup_collapsesEarlierAssistantMessagesInTurn() {
+        fun assistant(id: String, seconds: Long): CodexMessage =
+            CodexMessage(
+                id = id,
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = id,
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+
+        val items = listOf(assistant("step-1", 0), assistant("step-2", 30), assistant("summary", 70)).toTimelineListItems()
+
+        assertEquals(2, items.size)
+        assertIs<TimelineListItem.AssistantWorkGroup>(items[0]).also {
+            assertEquals(listOf("step-1", "step-2"), it.messages.map { message -> message.id })
+        }
+        assertIs<TimelineListItem.Single>(items[1]).also {
+            assertEquals("summary", it.message.id)
+        }
+    }
+
+    @Test
     fun thinkingRows_areHiddenFromTimelineRendering() {
         val items = listOf(cmd("c1"), thinking("r1"), file("f1")).toTimelineListItems()
         assertEquals(2, items.size)

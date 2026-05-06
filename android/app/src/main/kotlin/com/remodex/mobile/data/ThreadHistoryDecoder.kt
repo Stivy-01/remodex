@@ -7,6 +7,9 @@ import com.remodex.mobile.core.model.CodexMessageRole
 import com.remodex.mobile.core.model.CodexPlanState
 import com.remodex.mobile.core.model.CodexPlanStep
 import com.remodex.mobile.core.model.CodexPlanStepStatus
+import com.remodex.mobile.core.model.CodexSubagentAction
+import com.remodex.mobile.core.model.CodexSubagentRef
+import com.remodex.mobile.core.model.CodexSubagentState
 import com.remodex.mobile.core.model.JSONValue
 import com.remodex.mobile.core.model.TurnThinkingDisclosureHints
 import java.time.Instant
@@ -18,6 +21,7 @@ internal data class DecodedCompletedItem(
     val text: String,
     val attachments: List<CodexImageAttachment> = emptyList(),
     val planState: CodexPlanState? = null,
+    val subagentAction: CodexSubagentAction? = null,
     val assistantPhase: String? = null,
 )
 
@@ -175,11 +179,27 @@ internal object ThreadHistoryDecoder {
                             itemId,
                             ts,
                         )
-                    else -> Unit
+                    else -> {
+                        if (isSubagentItemType(norm)) {
+                            decodeSubagentActionItem(itemObject)?.let { action ->
+                                append(
+                                    out,
+                                    threadId,
+                                    CodexMessageRole.system,
+                                    CodexMessageKind.subagentAction,
+                                    action.summaryText,
+                                    turnId,
+                                    itemId,
+                                    ts,
+                                    subagentAction = action,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
-        return out
+        return foldSubagentAssistantSummaries(out)
     }
 
     /** `item/completed` payload (parity iOS `handleStructuredItemLifecycle` testi principali). */
@@ -276,7 +296,19 @@ internal object ThreadHistoryDecoder {
                     planState = decodeHistoryPlanState(itemObject),
                 )
             }
-            else -> null
+            else ->
+                if (isSubagentItemType(norm)) {
+                    decodeSubagentActionItem(itemObject)?.let { action ->
+                        DecodedCompletedItem(
+                            CodexMessageRole.system,
+                            CodexMessageKind.subagentAction,
+                            action.summaryText,
+                            subagentAction = action,
+                        )
+                    }
+                } else {
+                    null
+                }
         }
     }
 
@@ -291,10 +323,11 @@ internal object ThreadHistoryDecoder {
         createdAt: Instant,
         attachments: List<CodexImageAttachment> = emptyList(),
         planState: CodexPlanState? = null,
+        subagentAction: CodexSubagentAction? = null,
         assistantPhase: String? = null,
     ) {
         val t = sanitizeTextForKind(kind, text)
-        if (t.isEmpty() && attachments.isEmpty() && kind != CodexMessageKind.plan) return
+        if (t.isEmpty() && attachments.isEmpty() && kind != CodexMessageKind.plan && subagentAction == null) return
         out.add(
             CodexMessage(
                 threadId = threadId,
@@ -308,12 +341,323 @@ internal object ThreadHistoryDecoder {
                 isStreaming = false,
                 attachments = attachments,
                 planState = planState,
+                subagentAction = subagentAction,
             ),
         )
     }
 
     private fun normalizedItemType(raw: String): String =
         raw.replace("_", "").replace("-", "").lowercase()
+
+    private fun isSubagentItemType(norm: String): Boolean =
+        norm == "collabagenttoolcall" ||
+            norm == "collabtoolcall" ||
+            norm.startsWith("collabagentspawn") ||
+            norm.startsWith("collabwaiting") ||
+            norm.startsWith("collabclose") ||
+            norm.startsWith("collabresume") ||
+            norm.startsWith("collabagentinteraction")
+
+    internal fun decodeSubagentActionItem(itemObject: Map<String, JSONValue>): CodexSubagentAction? {
+        val receiverThreadIds = decodeSubagentReceiverThreadIds(itemObject)
+        val receiverAgents = decodeSubagentReceiverAgents(itemObject, receiverThreadIds)
+        val agentStates = decodeSubagentAgentStates(itemObject)
+        val tool = firstStringValue(itemObject, "tool", "name") ?: inferSubagentToolFromType(itemObject) ?: "spawnAgent"
+        val status = firstStringValue(itemObject, "status") ?: "in_progress"
+        val prompt = firstStringValue(itemObject, "prompt", "task", "message")
+        val model =
+            normalizedIdentifier(
+                firstStringValue(
+                    itemObject,
+                    "model",
+                    "modelName",
+                    "model_name",
+                    "requestedModel",
+                    "requested_model",
+                ),
+            )
+
+        if (receiverThreadIds.isEmpty() && receiverAgents.isEmpty() && agentStates.isEmpty() && prompt == null && model == null) {
+            return null
+        }
+
+        return CodexSubagentAction(
+            tool = tool,
+            status = status,
+            prompt = prompt,
+            model = model,
+            receiverThreadIds = receiverThreadIds,
+            receiverAgents = receiverAgents,
+            agentStates = agentStates,
+        )
+    }
+
+    private fun decodeSubagentReceiverThreadIds(itemObject: Map<String, JSONValue>): List<String> {
+        val plural =
+            firstValue(itemObject, "receiverThreadIds", "receiver_thread_ids", "threadIds", "thread_ids")
+                ?.arrayValue
+                .orEmpty()
+                .mapNotNull { normalizedIdentifier(it.stringValue) }
+                .distinct()
+        if (plural.isNotEmpty()) return plural
+
+        return listOfNotNull(
+            normalizedIdentifier(
+                firstStringValue(
+                    itemObject,
+                    "receiverThreadId",
+                    "receiver_thread_id",
+                    "threadId",
+                    "thread_id",
+                    "newThreadId",
+                    "new_thread_id",
+                ),
+            ),
+        )
+    }
+
+    private fun decodeSubagentReceiverAgents(
+        itemObject: Map<String, JSONValue>,
+        fallbackThreadIds: List<String>,
+    ): List<CodexSubagentRef> {
+        val values = firstValue(itemObject, "receiverAgents", "receiver_agents", "agents")?.arrayValue
+        if (values.isNullOrEmpty()) return buildSyntheticAgentRefs(itemObject, fallbackThreadIds)
+
+        return values.mapIndexedNotNull { index, value ->
+            val obj = value.objectValue ?: return@mapIndexedNotNull null
+            val threadId =
+                normalizedIdentifier(
+                    firstStringValue(
+                        obj,
+                        "threadId",
+                        "thread_id",
+                        "receiverThreadId",
+                        "receiver_thread_id",
+                        "newThreadId",
+                        "new_thread_id",
+                    ) ?: fallbackThreadIds.getOrNull(index),
+                ) ?: return@mapIndexedNotNull null
+            CodexSubagentRef(
+                threadId = threadId,
+                agentId = normalizedIdentifier(firstStringValue(obj, "agentId", "agent_id", "receiverAgentId", "receiver_agent_id", "newAgentId", "new_agent_id", "id")),
+                nickname = normalizedIdentifier(firstStringValue(obj, "agentNickname", "agent_nickname", "receiverAgentNickname", "receiver_agent_nickname", "newAgentNickname", "new_agent_nickname", "nickname", "name")),
+                role = normalizedIdentifier(firstStringValue(obj, "agentRole", "agent_role", "receiverAgentRole", "receiver_agent_role", "newAgentRole", "new_agent_role", "agentType", "agent_type")),
+                model = normalizedIdentifier(firstStringValue(obj, "modelProvider", "model_provider", "modelProviderId", "model_provider_id", "modelName", "model_name", "model")),
+                prompt = normalizedIdentifier(firstStringValue(obj, "prompt", "instructions", "instruction", "task", "message")),
+            )
+        }
+    }
+
+    private fun decodeSubagentAgentStates(itemObject: Map<String, JSONValue>): Map<String, CodexSubagentState> {
+        val candidate = firstValue(itemObject, "statuses", "agentsStates", "agents_states", "agentStates", "agent_states")
+        candidate?.objectValue?.let { obj ->
+            val decoded = LinkedHashMap<String, CodexSubagentState>()
+            for ((rawThreadId, value) in obj) {
+                val stateObject = value.objectValue
+                val threadId =
+                    normalizedIdentifier(rawThreadId)
+                        ?: normalizedIdentifier(firstStringValue(stateObject, "threadId", "thread_id"))
+                        ?: continue
+                decoded[threadId] =
+                    CodexSubagentState(
+                        threadId = threadId,
+                        status = firstStringValue(stateObject, "status") ?: "unknown",
+                        message = firstStringValue(stateObject, "message", "text", "delta", "summary"),
+                    )
+            }
+            return decoded
+        }
+        candidate?.arrayValue?.let { values ->
+            val decoded = LinkedHashMap<String, CodexSubagentState>()
+            for (value in values) {
+                val obj = value.objectValue ?: continue
+                val threadId = normalizedIdentifier(firstStringValue(obj, "threadId", "thread_id")) ?: continue
+                decoded[threadId] =
+                    CodexSubagentState(
+                        threadId = threadId,
+                        status = firstStringValue(obj, "status") ?: "unknown",
+                        message = firstStringValue(obj, "message", "text", "delta", "summary"),
+                    )
+            }
+            return decoded
+        }
+        return emptyMap()
+    }
+
+    private fun buildSyntheticAgentRefs(
+        itemObject: Map<String, JSONValue>,
+        fallbackThreadIds: List<String>,
+    ): List<CodexSubagentRef> {
+        val threadId =
+            fallbackThreadIds.firstOrNull()
+                ?: normalizedIdentifier(
+                    firstStringValue(
+                        itemObject,
+                        "receiverThreadId",
+                        "receiver_thread_id",
+                        "threadId",
+                        "thread_id",
+                        "newThreadId",
+                        "new_thread_id",
+                    ),
+                )
+                ?: return emptyList()
+        return listOf(
+            CodexSubagentRef(
+                threadId = threadId,
+                agentId = normalizedIdentifier(firstStringValue(itemObject, "newAgentId", "new_agent_id", "agentId", "agent_id")),
+                nickname = normalizedIdentifier(firstStringValue(itemObject, "newAgentNickname", "new_agent_nickname", "agentNickname", "agent_nickname", "receiverAgentNickname", "receiver_agent_nickname")),
+                role = normalizedIdentifier(firstStringValue(itemObject, "receiverAgentRole", "receiver_agent_role", "newAgentRole", "new_agent_role", "agentRole", "agent_role", "agentType", "agent_type")),
+                model = normalizedIdentifier(firstStringValue(itemObject, "modelProvider", "model_provider", "modelProviderId", "model_provider_id", "modelName", "model_name", "model")),
+                prompt = normalizedIdentifier(firstStringValue(itemObject, "prompt", "instructions", "instruction", "task", "message")),
+            ),
+        )
+    }
+
+    private fun inferSubagentToolFromType(itemObject: Map<String, JSONValue>): String? {
+        val normalized = firstStringValue(itemObject, "type")?.let(::normalizedItemType) ?: return null
+        return when {
+            "spawn" in normalized -> "spawnAgent"
+            "waiting" in normalized || "wait" in normalized -> "wait"
+            "close" in normalized -> "closeAgent"
+            "resume" in normalized -> "resumeAgent"
+            "sendinput" in normalized || "interaction" in normalized -> "sendInput"
+            else -> null
+        }
+    }
+
+    private fun firstValue(
+        obj: Map<String, JSONValue>?,
+        vararg keys: String,
+    ): JSONValue? {
+        if (obj == null) return null
+        for (key in keys) {
+            obj[key]?.let { return it }
+        }
+        return null
+    }
+
+    private fun firstStringValue(
+        obj: Map<String, JSONValue>?,
+        vararg keys: String,
+    ): String? =
+        firstValue(obj, *keys)
+            ?.stringValue
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+    private fun normalizedIdentifier(value: String?): String? =
+        value?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun foldSubagentAssistantSummaries(messages: List<CodexMessage>): List<CodexMessage> {
+        if (messages.none { it.kind == CodexMessageKind.subagentAction }) return messages
+        val out = messages.toMutableList()
+        val summaryByTurn = LinkedHashMap<String, List<CodexSubagentRef>>()
+        val allRefs = ArrayList<CodexSubagentRef>()
+        out.filter { it.role == CodexMessageRole.assistant && it.kind == CodexMessageKind.chat }
+            .forEach { message ->
+                val refs = parseAssistantSubagentSummaryRefs(message.text)
+                if (refs.isEmpty()) return@forEach
+                allRefs += refs
+                message.turnId?.let { summaryByTurn[it] = refs }
+            }
+        if (summaryByTurn.isEmpty() && allRefs.isEmpty()) return messages
+
+        for (index in out.indices) {
+            val message = out[index]
+            val action = message.subagentAction ?: continue
+            val refs =
+                summaryByTurn[message.turnId]
+                    ?: allRefs.filter { ref ->
+                        action.agentRows.any { it.threadId == ref.threadId || it.agentId == ref.agentId }
+                    }
+            if (refs.isEmpty()) continue
+            val enriched = enrichSubagentAction(action, refs)
+            out[index] = message.copy(text = enriched.summaryText, subagentAction = enriched)
+        }
+        return out.filterNot { message ->
+            message.role == CodexMessageRole.assistant &&
+                message.kind == CodexMessageKind.chat &&
+                parseAssistantSubagentSummaryRefs(message.text).isNotEmpty()
+        }
+    }
+
+    private fun enrichSubagentAction(
+        action: CodexSubagentAction,
+        summaryRefs: List<CodexSubagentRef>,
+    ): CodexSubagentAction {
+        if (summaryRefs.isEmpty()) return action
+        val refsByThread = summaryRefs.associateBy { it.threadId }
+        val enrichedAgents =
+            action.agentRows.map { row ->
+                val summary = refsByThread[row.threadId]
+                if (summary == null) {
+                    CodexSubagentRef(
+                        threadId = row.threadId,
+                        agentId = row.agentId,
+                        nickname = row.nickname,
+                        role = row.role,
+                        model = row.model,
+                        prompt = row.prompt,
+                    )
+                } else {
+                    CodexSubagentRef(
+                        threadId = row.threadId,
+                        agentId = row.agentId,
+                        nickname = row.nickname ?: summary.nickname,
+                        role = row.role ?: summary.role,
+                        model = row.model,
+                        prompt = row.prompt,
+                    )
+                }
+            }
+        val existingThreads = enrichedAgents.mapTo(linkedSetOf()) { it.threadId }
+        val extraRefs = summaryRefs.filterNot { it.threadId in existingThreads }
+        return action.copy(
+            receiverThreadIds = (action.receiverThreadIds + summaryRefs.map { it.threadId }).distinct(),
+            receiverAgents = enrichedAgents + extraRefs,
+        )
+    }
+
+    private fun parseAssistantSubagentSummaryRefs(text: String): List<CodexSubagentRef> {
+        if (!text.contains("subagent", ignoreCase = true)) return emptyList()
+        val refs = ArrayList<CodexSubagentRef>()
+        val inlinePairRegex =
+            Regex("""[-*]?\s*`?([A-Za-z][A-Za-z0-9_-]{1,40})`?\s*\(\s*`?([0-9a-fA-F]{8}-[0-9a-fA-F-]{12,})`?\s*\)""")
+        inlinePairRegex.findAll(text.replace('\n', ' ')).forEach { match ->
+            refs +=
+                CodexSubagentRef(
+                    threadId = match.groupValues[2].trim(),
+                    nickname = match.groupValues[1].trim(),
+                )
+        }
+        var pendingName: String? = null
+        val bulletRegex = Regex("""^\s*[-*]\s*`?([^`(\n]+?)`?\s*$""")
+        val inlineRegex = Regex("""^\s*[-*]\s*`?([^`(\n]+?)`?\s*\(?`?([0-9a-fA-F]{8}-[0-9a-fA-F-]{12,})`?\)?\s*$""")
+        val idRegex = Regex("""`?([0-9a-fA-F]{8}-[0-9a-fA-F-]{12,})`?""")
+        for (line in text.lines()) {
+            val inline = inlineRegex.find(line)
+            if (inline != null) {
+                val name = inline.groupValues[1].trim().takeIf { it.isNotEmpty() }
+                val threadId = inline.groupValues[2].trim()
+                if (name != null) refs += CodexSubagentRef(threadId = threadId, nickname = name)
+                pendingName = null
+                continue
+            }
+            val bullet = bulletRegex.find(line)
+            if (bullet != null) {
+                pendingName = bullet.groupValues[1].trim().takeIf { it.isNotEmpty() }
+                continue
+            }
+            val id = idRegex.find(line)?.groupValues?.getOrNull(1)?.trim()
+            val name = pendingName
+            if (name != null && !id.isNullOrBlank()) {
+                refs += CodexSubagentRef(threadId = id, nickname = name)
+                pendingName = null
+            }
+        }
+        return refs.distinctBy { it.threadId }
+    }
 
     private fun decodeBaseInstant(threadObject: Map<String, JSONValue>): Instant =
         decodeInstant(threadObject)

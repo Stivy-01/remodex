@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.remodex.mobile.ui.theme.RemodexGitDiffAdditionBgDark
 import com.remodex.mobile.ui.theme.RemodexGitDiffAdditionBgLight
@@ -30,6 +32,8 @@ internal enum class GitPatchLineKind {
     Deletion,
     Context,
 }
+
+private val GitPatchHunkHeaderRegex = Regex("""@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@""")
 
 /** Classify unified-diff / git patch lines for row highlighting. */
 internal fun gitPatchLineKind(line: String): GitPatchLineKind {
@@ -57,6 +61,7 @@ internal fun gitPatchLineKind(line: String): GitPatchLineKind {
 internal fun GitPatchHighlightedBlock(
     patch: String,
     modifier: Modifier = Modifier,
+    verticalScrollEnabled: Boolean = true,
 ) {
     val lines =
         remember(patch) {
@@ -75,19 +80,45 @@ internal fun GitPatchHighlightedBlock(
     val hScroll = rememberScrollState()
     val linePadH = 6.dp
     val linePadV = 3.dp
+    val lineNumberColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+    val gutterBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f)
 
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
-                .verticalScroll(vScroll),
+                .then(
+                    if (verticalScrollEnabled) {
+                        Modifier.verticalScroll(vScroll)
+                    } else {
+                        Modifier
+                    },
+                ),
     ) {
         Row(
             modifier = Modifier.horizontalScroll(hScroll),
         ) {
             Column {
+                var oldLineNumber: Int? = null
+                var newLineNumber: Int? = null
                 lines.forEach { line ->
                     val kind = gitPatchLineKind(line)
+                    if (line.startsWith("@@")) {
+                        GitPatchHunkHeaderRegex.find(line)?.let { match ->
+                            oldLineNumber = match.groupValues.getOrNull(1)?.toIntOrNull()
+                            newLineNumber = match.groupValues.getOrNull(2)?.toIntOrNull()
+                        }
+                    }
+                    val displayLineNumber =
+                        when (kind) {
+                            GitPatchLineKind.Addition -> newLineNumber?.also { newLineNumber = it + 1 }
+                            GitPatchLineKind.Deletion -> oldLineNumber?.also { oldLineNumber = it + 1 }
+                            GitPatchLineKind.Context -> newLineNumber?.also {
+                                newLineNumber = it + 1
+                                oldLineNumber = oldLineNumber?.plus(1)
+                            }
+                            GitPatchLineKind.Meta -> null
+                        }
                     val bg: Color? =
                         when (kind) {
                             GitPatchLineKind.Addition -> addBg
@@ -104,15 +135,29 @@ internal fun GitPatchHighlightedBlock(
                                     Modifier
                                 },
                             )
-                            .padding(horizontal = linePadH, vertical = linePadV)
-                    Text(
-                        text = line.ifEmpty { " " },
-                        modifier = rowMod,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = fg,
-                        softWrap = false,
-                    )
+                    Row(modifier = rowMod) {
+                        Text(
+                            text = displayLineNumber?.toString().orEmpty(),
+                            modifier =
+                                Modifier
+                                    .width(44.dp)
+                                    .background(gutterBg)
+                                    .padding(horizontal = linePadH, vertical = linePadV),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = lineNumberColor,
+                            textAlign = TextAlign.End,
+                            softWrap = false,
+                        )
+                        Text(
+                            text = line.ifEmpty { " " },
+                            modifier = Modifier.padding(horizontal = linePadH, vertical = linePadV),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = fg,
+                            softWrap = false,
+                        )
+                    }
                 }
             }
         }

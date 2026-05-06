@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -42,6 +43,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
 import com.remodex.mobile.R
@@ -87,7 +89,10 @@ internal fun TurnComposerBar(
     onSelectAutocomplete: (TurnComposerAutocompleteItem) -> Unit = {},
     onSend: () -> Unit,
     voiceUiEnabled: Boolean = false,
+    voiceAudioLevels: List<Float> = emptyList(),
+    voiceRecordingDurationSeconds: Double = 0.0,
     onVoiceClick: () -> Unit = {},
+    onCancelVoiceRecording: () -> Unit = {},
     composerEnvironment: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -191,6 +196,13 @@ internal fun TurnComposerBar(
                     }
                 }
             }
+        }
+        if (model.voicePhase == TurnVoicePhase.Recording) {
+            VoiceRecordingCapsule(
+                audioLevels = voiceAudioLevels,
+                durationSeconds = voiceRecordingDurationSeconds,
+                onCancel = onCancelVoiceRecording,
+            )
         }
         RemodexComposerCapsuleChrome(
             modifier = Modifier.fillMaxWidth(),
@@ -305,6 +317,11 @@ internal fun TurnComposerBar(
                         onSelectReasoningEffort = onSelectReasoningEffort,
                         onSelectServiceTier = onSelectServiceTier,
                     )
+                    if (isPlanModeEnabled) {
+                        ComposerPlanModeBadge(
+                            onClick = { onSetPlanModeEnabled(false) },
+                        )
+                    }
                     Box(modifier = Modifier.weight(1f))
                     Box(
                         modifier = Modifier.size(36.dp),
@@ -428,6 +445,53 @@ private fun autocompleteIconRes(kind: ComposerMentionKind): Int =
         ComposerMentionKind.Plugin -> LucideR.drawable.lucide_ic_blocks
         ComposerMentionKind.SlashCommand -> LucideR.drawable.lucide_ic_command
     }
+
+@Composable
+private fun ComposerPlanModeBadge(
+    onClick: () -> Unit,
+) {
+    val lightChrome = isAgentLightChrome()
+    val shape = RoundedCornerShape(999.dp)
+    val background =
+        if (lightChrome) {
+            Color(0xFFFFF2A8)
+        } else {
+            Color(0xFF4D3B12)
+        }
+    val border =
+        if (lightChrome) {
+            Color(0xFFE7B900).copy(alpha = 0.62f)
+        } else {
+            Color(0xFFFFD666).copy(alpha = 0.42f)
+        }
+    val textColor =
+        if (lightChrome) {
+            Color(0xFF604500)
+        } else {
+            Color(0xFFFFE08A)
+        }
+    val label = stringResource(R.string.turn_plan_mode_chip)
+
+    Box(
+        modifier =
+            Modifier
+                .clip(shape)
+                .background(background)
+                .border(0.5.dp, border, shape)
+                .clickable(onClick = onClick)
+                .semantics { contentDescription = label }
+                .padding(horizontal = 9.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
 
 @Composable
 private fun ComposerMentionChipStrip(
