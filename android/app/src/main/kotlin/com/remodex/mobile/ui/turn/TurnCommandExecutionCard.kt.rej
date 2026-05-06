@@ -1,0 +1,336 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnCommandExecutionCard.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnCommandExecutionCard.kt	(rejected hunks)
+@@ -2,31 +2,26 @@ package com.remodex.mobile.ui.turn
+ 
+ import android.content.ClipData
+ import androidx.compose.foundation.background
+-import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.horizontalScroll
+ import androidx.compose.foundation.layout.Arrangement
+-import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.Column
+ import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.heightIn
+ import androidx.compose.foundation.layout.padding
+-import androidx.compose.foundation.layout.size
+ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.foundation.verticalScroll
+-import androidx.compose.material3.ButtonDefaults
+-import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.ExperimentalMaterial3Api
+ import androidx.compose.material3.HorizontalDivider
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.ModalBottomSheet
+-import androidx.compose.material3.Surface
+ import androidx.compose.material3.Text
+ import androidx.compose.material3.TextButton
+ import androidx.compose.material3.rememberModalBottomSheetState
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.saveable.rememberSaveable
+ import androidx.compose.runtime.setValue
+@@ -35,10 +30,10 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.draw.clip
+ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.platform.LocalClipboard
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.platform.toClipEntry
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.text.font.FontFamily
+-import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.dp
+ import com.remodex.mobile.R
+@@ -53,21 +48,18 @@ import kotlinx.coroutines.launch
+ @Composable
+ internal fun TurnCommandExecutionCard(
+     message: CodexMessage,
+-    contentColor: Color,
++    @Suppress("UNUSED_PARAMETER") contentColor: Color,
+     details: CommandExecutionDetails? = null,
+     modifier: Modifier = Modifier,
+ ) {
+     val parsed = TurnTimelineRichContentCache.parseCommandExecution(message)
+     val preview = TurnCommandExecutionPreviewMerge.merge(parsed, details)
+-    var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
+     var showDetailSheet by rememberSaveable(message.id) { mutableStateOf(false) }
+     val colors = MaterialTheme.colorScheme
+-    val humanized = TurnMarkdownRenderCache.humanizeCommand(preview.command, preview.isRunning)
+-    val container =
+-        when {
+-            preview.isFailure -> colors.errorContainer.copy(alpha = 0.34f)
+-            preview.isRunning -> colors.secondaryContainer.copy(alpha = 0.28f)
+-            else -> colors.primaryContainer.copy(alpha = 0.18f)
++    val context = LocalContext.current
++    val ui =
++        remember(preview, details) {
++            TurnMarkdownRenderCache.toolExecutionUi(preview, details, context.resources)
+         }
+     val accent =
+         when {
+@@ -75,160 +67,30 @@ internal fun TurnCommandExecutionCard(
+             preview.isRunning -> colors.onSecondaryContainer
+             else -> colors.onPrimaryContainer
+         }
+-    val phaseLabel =
+-        when (preview.phase.lowercase()) {
+-            "running" -> stringResource(R.string.turn_timeline_command_running)
+-            "failed",
+-            "error",
+-            -> stringResource(R.string.turn_timeline_command_failed)
+-            "stopped" -> stringResource(R.string.turn_timeline_command_stopped)
+-            else -> stringResource(R.string.turn_timeline_command_completed)
+-        }
+-    val canOpenDetails =
+-        preview.outputText?.isNotBlank() == true ||
+-            !preview.cwd.isNullOrBlank() ||
+-            preview.exitCode != null ||
+-            preview.durationMs != null ||
+-            TurnCommandExecutionPreviewMerge.hasUsefulFields(details)
+-
+-    Column(
+-        modifier =
+-            modifier
+-                .fillMaxWidth()
+-                .clip(MaterialTheme.shapes.small)
+-                .background(container)
+-                .clickable(enabled = canOpenDetails) { showDetailSheet = true }
+-                .padding(horizontal = 10.dp, vertical = 8.dp),
+-        verticalArrangement = Arrangement.spacedBy(8.dp),
+-    ) {
+-        Row(
+-            modifier = Modifier.fillMaxWidth(),
+-            horizontalArrangement = Arrangement.SpaceBetween,
+-        ) {
+-            Column(
+-                modifier = Modifier.weight(1f),
+-                verticalArrangement = Arrangement.spacedBy(3.dp),
+-            ) {
+-                    Text(
+-                    text = "${humanized.verb} ${humanized.target}",
+-                    style = MaterialTheme.typography.labelMedium,
+-                    color = accent,
+-                    fontWeight = FontWeight.SemiBold,
+-                    maxLines = 1,
+-                    overflow = TextOverflow.Ellipsis,
+-                )
+-                Text(
+-                    text = preview.command,
+-                    style = MaterialTheme.typography.bodySmall,
+-                    color = contentColor.copy(alpha = 0.94f),
+-                    fontFamily = FontFamily.Monospace,
+-                    maxLines = 2,
+-                    overflow = TextOverflow.Ellipsis,
+-                )
+-            }
+-            Column(
+-                horizontalAlignment = Alignment.End,
+-                verticalArrangement = Arrangement.spacedBy(4.dp),
+-                modifier = Modifier.padding(start = 10.dp),
+-            ) {
+-                Text(
+-                    text = phaseLabel,
+-                    style = MaterialTheme.typography.labelSmall,
+-                    color = accent,
+-                    fontWeight = FontWeight.SemiBold,
+-                    maxLines = 1,
+-                )
+-                if (preview.isRunning) {
+-                    CircularProgressIndicator(
+-                        modifier = Modifier.size(16.dp),
+-                        strokeWidth = 2.dp,
+-                        color = accent,
+-                    )
+-                }
+-            }
++    val onOpenDetails: (() -> Unit)? =
++        if (ui.isExpandable) {
++            { showDetailSheet = true }
++        } else {
++            null
+         }
+ 
+-        CommandMetadataChips(preview = preview, accent = accent)
+-
+-        val output = preview.outputText
+-        if (!output.isNullOrBlank()) {
+-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                TextButton(
+-                    onClick = { expanded = !expanded },
+-                    contentPadding = ButtonDefaults.TextButtonContentPadding,
+-                ) {
+-                    Text(
+-                        text =
+-                            if (expanded) {
+-                                stringResource(R.string.turn_timeline_hide_details)
+-                            } else {
+-                                stringResource(R.string.turn_timeline_show_details)
+-                            },
+-                        style = MaterialTheme.typography.labelSmall,
+-                        color = accent,
+-                        fontWeight = FontWeight.SemiBold,
+-                    )
+-                }
+-                TextButton(onClick = { showDetailSheet = true }) {
+-                    Text(
+-                        text = "Open",
+-                        style = MaterialTheme.typography.labelSmall,
+-                        color = accent,
+-                        fontWeight = FontWeight.SemiBold,
+-                    )
+-                }
+-            }
+-            if (expanded) {
+-                CommandOutputBlock(output = output)
+-            }
+-        }
+-    }
++    ToolExecutionCard(
++        ui = ui,
++        onClick = onOpenDetails,
++        modifier = modifier.fillMaxWidth(),
++    )
+ 
+     if (showDetailSheet) {
+         CommandExecutionDetailSheet(
+             preview = preview,
+-            phaseLabel = phaseLabel,
++            phaseLabel = ui.title,
++            commandPreview = ui.commandPreview,
+             accent = accent,
+             onDismiss = { showDetailSheet = false },
+         )
+     }
+ }
+ 
+-@Composable
+-private fun CommandMetadataChips(
+-    preview: TurnCommandExecutionPresentation,
+-    accent: Color,
+-) {
+-    val chips =
+-        buildList {
+-            preview.exitCode?.let { add("exit $it") }
+-            preview.durationMs?.let { add(formatDuration(it)) }
+-            preview.cwd?.takeIf { it.isNotBlank() }?.let { add(compactPath(it)) }
+-            preview.outputText?.lineSequence()?.count()?.takeIf { it > 0 }?.let { add("$it lines") }
+-        }
+-    if (chips.isEmpty()) return
+-    Row(
+-        modifier = Modifier.fillMaxWidth(),
+-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+-    ) {
+-        chips.take(3).forEach { chip ->
+-            Surface(
+-                shape = MaterialTheme.shapes.extraSmall,
+-                color = accent.copy(alpha = 0.10f),
+-            ) {
+-                Text(
+-                    text = chip,
+-                    style = MaterialTheme.typography.labelSmall,
+-                    color = accent,
+-                    maxLines = 1,
+-                    overflow = TextOverflow.Ellipsis,
+-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+-                )
+-            }
+-        }
+-    }
+-}
+-
+ @Composable
+ private fun CommandOutputBlock(output: String) {
+     val colors = MaterialTheme.colorScheme
+@@ -256,12 +118,18 @@ private fun CommandOutputBlock(output: String) {
+ private fun CommandExecutionDetailSheet(
+     preview: TurnCommandExecutionPresentation,
+     phaseLabel: String,
++    commandPreview: String?,
+     accent: Color,
+     onDismiss: () -> Unit,
+ ) {
+     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+     val clipboard = LocalClipboard.current
+     val scope = rememberCoroutineScope()
++    val fullCommand = preview.command.trim()
++    val previewTrimmed = commandPreview?.trim().orEmpty()
++    val showPreviewSection =
++        previewTrimmed.isNotEmpty() &&
++            !previewTrimmed.equals(fullCommand, ignoreCase = false)
+ 
+     fun copy(label: String, value: String) {
+         scope.launch {
+@@ -284,22 +152,40 @@ private fun CommandExecutionDetailSheet(
+             verticalArrangement = Arrangement.spacedBy(14.dp),
+         ) {
+             Text(
+-                text = "Command details",
++                text = stringResource(R.string.turn_command_sheet_title),
+                 style = MaterialTheme.typography.titleLarge,
+             )
++            if (showPreviewSection) {
++                DetailSection(
++                    title = stringResource(R.string.turn_command_sheet_section_command_preview),
++                    actionLabel = stringResource(R.string.turn_command_sheet_copy),
++                    onAction = { copy("command-preview", previewTrimmed) },
++                ) {
++                    CommandOutputBlock(output = previewTrimmed)
++                }
++            }
+             DetailSection(
+-                title = "Command",
+-                actionLabel = "Copy",
+-                onAction = { copy("command", preview.command) },
++                title = stringResource(R.string.turn_command_sheet_section_command),
++                actionLabel = stringResource(R.string.turn_command_sheet_copy),
++                onAction = { copy("command", fullCommand) },
+             ) {
+-                CommandOutputBlock(output = preview.command)
++                CommandOutputBlock(output = fullCommand)
+             }
+-            DetailSection(title = "Metadata") {
+-                MetadataRow("Status", phaseLabel, accent)
+-                preview.cwd?.takeIf { it.isNotBlank() }?.let { MetadataRow("Directory", it) }
++            DetailSection(title = stringResource(R.string.turn_command_sheet_section_metadata)) {
++                MetadataRow(
++                    label = stringResource(R.string.turn_command_sheet_label_status),
++                    value = phaseLabel,
++                    valueColor = accent,
++                )
++                preview.cwd?.takeIf { it.isNotBlank() }?.let {
++                    MetadataRow(
++                        label = stringResource(R.string.turn_command_sheet_label_directory),
++                        value = it,
++                    )
++                }
+                 preview.exitCode?.let {
+                     MetadataRow(
+-                        label = "Exit code",
++                        label = stringResource(R.string.turn_command_sheet_label_exit_code),
+                         value = it.toString(),
+                         valueColor =
+                             if (it == 0) {
+@@ -309,12 +195,17 @@ private fun CommandExecutionDetailSheet(
+                             },
+                     )
+                 }
+-                preview.durationMs?.let { MetadataRow("Duration", formatDuration(it)) }
++                preview.durationMs?.let {
++                    MetadataRow(
++                        label = stringResource(R.string.turn_command_sheet_label_duration),
++                        value = formatDuration(it),
++                    )
++                }
+             }
+             preview.outputText?.takeIf { it.isNotBlank() }?.let { output ->
+                 DetailSection(
+-                    title = "Output",
+-                    actionLabel = "Copy",
++                    title = stringResource(R.string.turn_command_sheet_section_output),
++                    actionLabel = stringResource(R.string.turn_command_sheet_copy),
+                     onAction = { copy("command-output", output) },
+                 ) {
+                     CommandOutputBlock(output = output)

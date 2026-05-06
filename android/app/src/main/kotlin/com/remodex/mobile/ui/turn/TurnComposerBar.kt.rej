@@ -1,0 +1,478 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnComposerBar.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/turn/TurnComposerBar.kt	(rejected hunks)
+@@ -1,5 +1,8 @@
+ package com.remodex.mobile.ui.turn
+ 
++import androidx.compose.foundation.background
++import androidx.compose.foundation.border
++import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.Column
+@@ -7,22 +10,11 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
+ import androidx.compose.foundation.layout.FlowRow
+ import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.fillMaxWidth
+-import androidx.compose.foundation.layout.imePadding
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.interaction.MutableInteractionSource
+-import androidx.compose.foundation.interaction.collectIsFocusedAsState
+ import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.shape.CircleShape
+ import androidx.compose.foundation.text.BasicTextField
+-import androidx.compose.material.icons.Icons
+-import androidx.compose.material.icons.automirrored.filled.Send
+-import androidx.compose.material.icons.filled.Add
+-import androidx.compose.material.icons.filled.AddPhotoAlternate
+-import androidx.compose.material.icons.filled.ArrowDropDown
+-import androidx.compose.material.icons.filled.Close
+-import androidx.compose.material.icons.filled.Mic
+-import androidx.compose.material.icons.filled.Stop
+-import androidx.compose.material.icons.outlined.AutoAwesome
+-import androidx.compose.material.icons.outlined.Psychology
+ import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.DropdownMenu
+ import androidx.compose.material3.DropdownMenuItem
+@@ -41,14 +33,18 @@ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.clip
++import androidx.compose.ui.res.painterResource
+ import androidx.compose.ui.semantics.contentDescription
+ import androidx.compose.ui.semantics.semantics
+ import androidx.compose.ui.res.stringResource
+-import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.TextStyle
+ import androidx.compose.ui.unit.dp
++import com.composables.icons.lucide.R as LucideR
+ import com.remodex.mobile.R
+-import com.remodex.mobile.ui.theme.RemodexComposerCapsuleShape
++import com.remodex.mobile.ui.theme.AgentLightColors
++import com.remodex.mobile.ui.theme.RemodexComposerCapsuleChrome
++import com.remodex.mobile.ui.theme.isAgentLightChrome
+ 
+ internal enum class TurnVoicePhase {
+     Idle,
+@@ -61,7 +57,8 @@ internal enum class TurnVoicePhase {
+  *
+  * In the iOS/SwiftUI surface this is the prompt composer (`TurnComposer*` family); keep this type
+  * as the single Android entry point for that responsibility. [composerEnvironment] hosts the
+- * Swift-style secondary row (Local / access / branch / usage ring) when the field is not focused.
++ * Swift-style secondary row (Local / access / branch / usage ring). Kept visible so controls stay
++ * reachable while typing; vertical space when the IME is open is handled by [androidx.compose.foundation.layout.imePadding] on the pane.
+  */
+ @OptIn(ExperimentalLayoutApi::class)
+ @Composable
+@@ -93,23 +90,23 @@ internal fun TurnComposerBar(
+ ) {
+     var isAttachmentMenuExpanded by remember { mutableStateOf(false) }
+     val textInteractionSource = remember { MutableInteractionSource() }
+-    val isComposerFocused by textInteractionSource.collectIsFocusedAsState()
+     val actions = remember(model, voiceUiEnabled) { TurnComposerToolbarActionsBuilder.build(model, voiceUiEnabled) }
+     val locks = remember(model) { model.deriveInteractionLocks() }
+     val runtimeToolbarMenu = remember(runtimeControls) { TurnComposerRuntimeToolbarMenuBuilder.build(runtime = runtimeControls) }
+-    val runtimeChipCompactLabel =
+-        remember(runtimeControls.reasoningEffort, runtimeControls.serviceTier) {
+-            when {
+-                runtimeControls.reasoningEffort.enabled -> runtimeControls.reasoningEffort.selected.label
+-                else -> runtimeControls.serviceTier.selected.label
+-            }
++    val agentLightChrome = isAgentLightChrome()
++    val neutralToolbarIconTint =
++        if (agentLightChrome) AgentLightColors.IconMuted else MaterialTheme.colorScheme.onSurfaceVariant
++    val composerHintColor =
++        if (agentLightChrome) {
++            MaterialTheme.colorScheme.outlineVariant
++        } else {
++            MaterialTheme.colorScheme.onSurfaceVariant
+         }
+ 
+     Column(
+         modifier =
+             modifier
+                 .fillMaxWidth()
+-                .imePadding()
+                 .padding(top = 6.dp, bottom = 8.dp),
+         verticalArrangement = Arrangement.spacedBy(6.dp),
+     ) {
+@@ -121,12 +118,8 @@ internal fun TurnComposerBar(
+             chips = mentionChips,
+             onRemove = onRemoveMentionChip,
+         )
+-        Surface(
++        RemodexComposerCapsuleChrome(
+             modifier = Modifier.fillMaxWidth(),
+-            shape = RemodexComposerCapsuleShape,
+-            color = MaterialTheme.colorScheme.surface,
+-            tonalElevation = 2.dp,
+-            shadowElevation = 3.dp,
+         ) {
+             Column(
+                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+@@ -156,7 +149,7 @@ internal fun TurnComposerBar(
+                                 Text(
+                                     text = stringResource(R.string.turn_composer_hint),
+                                     style = MaterialTheme.typography.bodyLarge,
+-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
++                                    color = composerHintColor,
+                                 )
+                             }
+                             innerTextField()
+@@ -174,8 +167,10 @@ internal fun TurnComposerBar(
+                             modifier = Modifier.size(36.dp),
+                         ) {
+                             Icon(
+-                                imageVector = Icons.Default.Add,
++                                painter = painterResource(LucideR.drawable.lucide_ic_paperclip),
+                                 contentDescription = stringResource(R.string.turn_add_images_cd),
++                                modifier = Modifier.size(20.dp),
++                                tint = neutralToolbarIconTint,
+                             )
+                         }
+                         DropdownMenu(
+@@ -189,7 +184,10 @@ internal fun TurnComposerBar(
+                                     onPickImages()
+                                 },
+                                 leadingIcon = {
+-                                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
++                                    Icon(
++                                        painter = painterResource(LucideR.drawable.lucide_ic_image_plus),
++                                        contentDescription = null,
++                                    )
+                                 },
+                             )
+                             DropdownMenuItem(
+@@ -225,34 +223,13 @@ internal fun TurnComposerBar(
+                             )
+                         }
+                     }
+-                    RuntimeSelectorChip(
+-                        label = stringResource(R.string.turn_runtime_model_label),
+-                        state = runtimeControls.model,
+-                        enabled = !locks.runtimeControlsLocked,
+-                        onSelect = onSelectModel,
+-                        showLabelPrefix = false,
+-                        leadingIcon = {
+-                            Icon(
+-                                imageVector = Icons.Outlined.AutoAwesome,
+-                                contentDescription = null,
+-                                modifier = Modifier.size(16.dp),
+-                            )
+-                        },
+-                    )
+-                    RuntimeToolbarChip(
+-                        menu = runtimeToolbarMenu,
+-                        chipLabel = runtimeChipCompactLabel,
++                    UnifiedComposerModelRuntimeChip(
++                        runtimeControls = runtimeControls,
++                        runtimeToolbarMenu = runtimeToolbarMenu,
+                         enabled = !locks.runtimeControlsLocked,
+-                        onSelectAction = { action ->
+-                            when (action.kind) {
+-                                TurnComposerToolbarActionKey.Kind.ReasoningEffort -> {
+-                                    runtimeControls.reasoningEffort.options.firstOrNull { it.id == action.id }?.let(onSelectReasoningEffort)
+-                                }
+-                                TurnComposerToolbarActionKey.Kind.ServiceTierSpeed -> {
+-                                    runtimeControls.serviceTier.options.firstOrNull { it.id == action.id }?.let(onSelectServiceTier)
+-                                }
+-                            }
+-                        },
++                        onSelectModel = onSelectModel,
++                        onSelectReasoningEffort = onSelectReasoningEffort,
++                        onSelectServiceTier = onSelectServiceTier,
+                     )
+                     Box(modifier = Modifier.weight(1f))
+                     Box(
+@@ -277,15 +254,18 @@ internal fun TurnComposerBar(
+                                 when (actions.voiceIcon) {
+                                     TurnComposerVoiceToolbarIcon.Stop -> {
+                                         Icon(
+-                                            imageVector = Icons.Filled.Stop,
++                                            painter = painterResource(LucideR.drawable.lucide_ic_circle_stop),
+                                             contentDescription = stringResource(R.string.turn_voice_stop_cd),
++                                            modifier = Modifier.size(20.dp),
+                                             tint = MaterialTheme.colorScheme.error,
+                                         )
+                                     }
+                                     TurnComposerVoiceToolbarIcon.Mic -> {
+                                         Icon(
+-                                            imageVector = Icons.Filled.Mic,
++                                            painter = painterResource(LucideR.drawable.lucide_ic_mic),
+                                             contentDescription = stringResource(R.string.turn_voice_mic_cd),
++                                            modifier = Modifier.size(20.dp),
++                                            tint = neutralToolbarIconTint,
+                                         )
+                                     }
+                                     TurnComposerVoiceToolbarIcon.None,
+@@ -305,23 +285,65 @@ internal fun TurnComposerBar(
+                                 strokeWidth = 2.dp,
+                             )
+                         } else {
+-                            IconButton(
+-                                onClick = onSend,
+-                                enabled = actions.sendButtonEnabled,
+-                                modifier = Modifier.size(36.dp),
++                            val cs = MaterialTheme.colorScheme
++                            val sendCd = stringResource(R.string.turn_send_cd)
++                            val sendBg =
++                                if (actions.sendButtonEnabled) {
++                                    cs.onSurface
++                                } else {
++                                    cs.surfaceVariant.copy(alpha = 0.8f)
++                                }
++                            val iconTint =
++                                if (actions.sendButtonEnabled) {
++                                    cs.surface
++                                } else {
++                                    cs.onSurfaceVariant.copy(alpha = 0.45f)
++                                }
++                            Box(
++                                modifier =
++                                    Modifier
++                                        .size(36.dp)
++                                        .clip(CircleShape)
++                                        .background(sendBg)
++                                        .clickable(
++                                            enabled = actions.sendButtonEnabled,
++                                            onClick = onSend,
++                                        )
++                                        .semantics { contentDescription = sendCd },
++                                contentAlignment = Alignment.Center,
+                             ) {
+                                 Icon(
+-                                    imageVector = Icons.AutoMirrored.Filled.Send,
+-                                    contentDescription = stringResource(R.string.turn_send_cd),
++                                    painter = painterResource(LucideR.drawable.lucide_ic_arrow_up),
++                                    contentDescription = null,
++                                    modifier = Modifier.size(18.dp),
++                                    tint = iconTint,
+                                 )
+                             }
+                         }
+                     }
+                 }
+                 autocomplete?.takeIf { it.isVisible }?.let { state ->
++                    val autoShape = MaterialTheme.shapes.small
++                    val autoBg =
++                        if (agentLightChrome) {
++                            AgentLightColors.Surface.copy(alpha = 0.94f)
++                        } else {
++                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
++                        }
++                    val autoModifier =
++                        if (agentLightChrome) {
++                            Modifier.border(
++                                width = 1.dp,
++                                color = MaterialTheme.colorScheme.outline,
++                                shape = autoShape,
++                            )
++                        } else {
++                            Modifier
++                        }
+                     Surface(
+-                        shape = MaterialTheme.shapes.small,
+-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
++                        modifier = autoModifier,
++                        shape = autoShape,
++                        color = autoBg,
+                     ) {
+                         Column(
+                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+@@ -358,96 +380,7 @@ internal fun TurnComposerBar(
+                 }
+             }
+         }
+-        if (!isComposerFocused) {
+-            composerEnvironment()
+-        }
+-    }
+-}
+-
+-@Composable
+-private fun RuntimeToolbarChip(
+-    menu: TurnComposerToolbarMenu,
+-    chipLabel: String,
+-    enabled: Boolean,
+-    onSelectAction: (TurnComposerToolbarActionKey) -> Unit,
+-) {
+-    var expanded by remember { mutableStateOf(false) }
+-    val hasEnabledItems = menu.sections.any { section -> section.items.any { it.enabled } }
+-    val canOpen = enabled && hasEnabledItems
+-    Box {
+-        FilterChip(
+-            selected = false,
+-            onClick = { expanded = true },
+-            enabled = canOpen,
+-            label = {
+-                Row(
+-                    verticalAlignment = Alignment.CenterVertically,
+-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+-                ) {
+-                    Icon(
+-                        imageVector = Icons.Outlined.Psychology,
+-                        contentDescription = null,
+-                        modifier = Modifier.size(16.dp),
+-                    )
+-                    Text(
+-                        text = chipLabel,
+-                        fontWeight = FontWeight.Medium,
+-                    )
+-                }
+-            },
+-            trailingIcon = {
+-                Icon(
+-                    imageVector = Icons.Default.ArrowDropDown,
+-                    contentDescription = null,
+-                    modifier = Modifier.size(18.dp),
+-                )
+-            },
+-        )
+-        DropdownMenu(
+-            expanded = expanded,
+-            onDismissRequest = { expanded = false },
+-        ) {
+-            menu.sections.forEachIndexed { index, section ->
+-                if (index > 0) {
+-                    HorizontalDivider()
+-                }
+-                DropdownMenuItem(
+-                    text = {
+-                        Text(
+-                            text = section.title,
+-                            style = MaterialTheme.typography.labelMedium,
+-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                        )
+-                    },
+-                    onClick = {},
+-                    enabled = false,
+-                )
+-                section.items.forEach { item ->
+-                    DropdownMenuItem(
+-                        text = {
+-                            Column {
+-                                Text(
+-                                    text = item.title,
+-                                    fontWeight = if (item.checked) FontWeight.SemiBold else FontWeight.Normal,
+-                                )
+-                                item.detail?.let { detail ->
+-                                    Text(
+-                                        text = detail,
+-                                        style = MaterialTheme.typography.bodySmall,
+-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                                    )
+-                                }
+-                            }
+-                        },
+-                        onClick = {
+-                            expanded = false
+-                            onSelectAction(item.actionKey)
+-                        },
+-                        enabled = item.enabled,
+-                    )
+-                }
+-            }
+-        }
++        composerEnvironment()
+     }
+ }
+ 
+@@ -481,7 +414,7 @@ private fun ComposerMentionChipStrip(
+                         modifier = Modifier.size(18.dp),
+                     ) {
+                         Icon(
+-                            imageVector = Icons.Default.Close,
++                            painter = painterResource(LucideR.drawable.lucide_ic_x),
+                             contentDescription = null,
+                             modifier = Modifier.size(14.dp),
+                         )
+@@ -491,90 +424,3 @@ private fun ComposerMentionChipStrip(
+         }
+     }
+ }
+-
+-@Composable
+-private fun RuntimeSelectorChip(
+-    label: String,
+-    state: TurnComposerRuntimeSelectorState,
+-    enabled: Boolean,
+-    onSelect: (TurnComposerRuntimeOption) -> Unit,
+-    showLabelPrefix: Boolean = true,
+-    leadingIcon: (@Composable () -> Unit)? = null,
+-) {
+-    var expanded by remember { mutableStateOf(false) }
+-    val options =
+-        remember(state.selected, state.options) {
+-            if (state.options.any { it.id == state.selected.id }) {
+-                state.options
+-            } else {
+-                listOf(state.selected) + state.options
+-            }
+-        }
+-    val isInteractive = enabled && state.enabled && options.any { it.enabled }
+-
+-    Box {
+-        FilterChip(
+-            selected = false,
+-            onClick = { expanded = true },
+-            enabled = isInteractive,
+-            label = {
+-                Row(
+-                    verticalAlignment = Alignment.CenterVertically,
+-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+-                ) {
+-                    leadingIcon?.invoke()
+-                    Text(
+-                        text =
+-                            if (showLabelPrefix) {
+-                                "$label: ${state.selected.label}"
+-                            } else {
+-                                state.selected.label
+-                            },
+-                        fontWeight = FontWeight.Medium,
+-                    )
+-                }
+-            },
+-            trailingIcon = {
+-                Icon(
+-                    imageVector = Icons.Default.ArrowDropDown,
+-                    contentDescription = null,
+-                    modifier = Modifier.size(18.dp),
+-                )
+-            },
+-        )
+-        DropdownMenu(
+-            expanded = expanded,
+-            onDismissRequest = { expanded = false },
+-        ) {
+-            options.forEach { option ->
+-                DropdownMenuItem(
+-                    text = {
+-                        Column {
+-                            Text(
+-                                text = option.label,
+-                                fontWeight =
+-                                    if (option.id == state.selected.id) {
+-                                        FontWeight.SemiBold
+-                                    } else {
+-                                        FontWeight.Normal
+-                                    },
+-                            )
+-                            option.detail?.let { detail ->
+-                                Text(
+-                                    text = detail,
+-                                    style = MaterialTheme.typography.bodySmall,
+-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                                )
+-                            }
+-                        }
+-                    },
+-                    onClick = {
+-                        expanded = false
+-                        onSelect(option)
+-                    },
+-                    enabled = option.enabled,
+-                )
+-            }
+-        }
+-    }
+-}

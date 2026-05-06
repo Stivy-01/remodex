@@ -1,0 +1,28 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceResume.kt b/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceResume.kt	(rejected hunks)
+@@ -67,7 +67,7 @@ internal suspend fun CodexService.ensureThreadResumedInternal(
+         if (decoded != null) {
+             var live = decoded.copy(syncState = CodexThreadSyncState.live)
+             live = applyAuthoritativeProjectPathToServerThread(live)
+-            _threads.value = upsertThreadRow(_threads.value, live)
++            publishThreads(upsertThreadRow(_threads.value, live))
+             confirmAuthoritativeProjectPathIfNeeded(
+                 tid,
+                 live.normalizedProjectPath,
+@@ -85,14 +85,15 @@ internal suspend fun CodexService.ensureThreadResumedInternal(
+     } else {
+         val i = _threads.value.indexOfFirst { it.id == tid }
+         if (i >= 0) {
+-            _threads.value =
++            publishThreads(
+                 _threads.value.mapIndexed { idx, t ->
+                     if (idx == i) {
+                         t.copy(syncState = CodexThreadSyncState.live)
+                     } else {
+                         t
+                     }
+-                }
++                },
++            )
+         }
+     }
+ 

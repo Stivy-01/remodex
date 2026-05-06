@@ -1,0 +1,19 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceThreadProjectRouting.kt b/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceThreadProjectRouting.kt	(rejected hunks)
+@@ -150,7 +150,7 @@ internal suspend fun CodexService.moveThreadToProjectPathImpl(
+     rememberAssociatedManagedWorktreePathIfWorktree(normalizedProjectPath, normalizedThreadId)
+     val now = Instant.now()
+     current = current.copy(cwd = normalizedProjectPath, updatedAt = now)
+-    _threads.value = upsertThreadRow(_threads.value, current)
++    publishThreads(upsertThreadRow(_threads.value, current))
+     _activeThreadId.value = normalizedThreadId
+     resumedThreadIds.remove(normalizedThreadId)
+ 
+@@ -169,7 +169,7 @@ internal suspend fun CodexService.moveThreadToProjectPathImpl(
+             requestImmediateThreadListSync()
+             return _threads.value.find { it.id == normalizedThreadId } ?: current
+         }
+-        _threads.value = upsertThreadRow(_threads.value, previousThread)
++        publishThreads(upsertThreadRow(_threads.value, previousThread))
+         if (previousAuth != null) {
+             authoritativeProjectPathByThreadId[normalizedThreadId] = previousAuth
+         } else {

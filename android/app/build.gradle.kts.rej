@@ -1,0 +1,9 @@
+diff a/android/app/build.gradle.kts b/android/app/build.gradle.kts	(rejected hunks)
+@@ -69,6 +69,7 @@ dependencies {
+     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
+     implementation("androidx.navigation:navigation-compose:2.8.4")
+     implementation("androidx.compose.material:material-icons-extended")
++    implementation("com.composables:icons-lucide-android:2.2.1")
+ 
+     val markdownRenderer = "0.39.2"
+     implementation("com.mikepenz:multiplatform-markdown-renderer:$markdownRenderer")

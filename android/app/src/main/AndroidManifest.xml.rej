@@ -1,0 +1,11 @@
+diff a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml	(rejected hunks)
+@@ -28,7 +28,8 @@
+             android:name=".MainActivity"
+             android:exported="true"
+             android:launchMode="singleTop"
+-            android:theme="@style/Theme.RemodexMobile">
++            android:theme="@style/Theme.RemodexMobile"
++            android:windowSoftInputMode="adjustResize">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />

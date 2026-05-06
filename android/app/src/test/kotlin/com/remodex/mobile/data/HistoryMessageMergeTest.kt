@@ -1,0 +1,346 @@
+package com.remodex.mobile.data
+
+import com.remodex.mobile.core.model.CodexMessage
+import com.remodex.mobile.core.model.CodexMessageDeliveryState
+import com.remodex.mobile.core.model.CodexMessageKind
+import com.remodex.mobile.core.model.CodexMessageRole
+import java.time.Instant
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class HistoryMessageMergeTest {
+    @Test
+    fun merge_reordersLateDesktopHistoryAheadOfExistingPhoneRows() {
+        val existing =
+            listOf(
+                message(
+                    id = "phone-local",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "phone follow-up",
+                    turnId = "turn-phone",
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:10Z"),
+                    deliveryState = CodexMessageDeliveryState.confirmed,
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "desktop-user",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "desktop first",
+                    turnId = "turn-desktop",
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+                message(
+                    id = "desktop-assistant",
+                    role = CodexMessageRole.assistant,
+                    kind = CodexMessageKind.chat,
+                    text = "desktop answer",
+                    turnId = "turn-desktop",
+                    itemId = "assistant-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:02Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(
+            listOf("desktop-user", "desktop-assistant", "phone-local"),
+            merged.sortedBy { it.orderIndex }.map { it.id },
+        )
+    }
+
+    @Test
+    fun merge_movesConfirmedPhoneDuplicateToHistoryPosition() {
+        val existing =
+            listOf(
+                message(
+                    id = "phone-local",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "phone follow-up",
+                    turnId = null,
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:10Z"),
+                    deliveryState = CodexMessageDeliveryState.pending,
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "phone-history",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "phone follow-up",
+                    turnId = "turn-phone",
+                    itemId = "user-phone",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+                message(
+                    id = "desktop-user",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "desktop later",
+                    turnId = "turn-desktop",
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:02Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(listOf("phone-local", "desktop-user"), merged.sortedBy { it.orderIndex }.map { it.id })
+        assertEquals(CodexMessageDeliveryState.confirmed, merged.first().deliveryState)
+        assertEquals("turn-phone", merged.first().turnId)
+    }
+
+    @Test
+    fun merge_replacesStreamingFileChangeSubsetWithLaterSnapshot() {
+        val existing =
+            listOf(
+                message(
+                    id = "diff-1",
+                    text = """
+                    Edited src/App.kt +2 -1
+                    """.trimIndent(),
+                    turnId = "turn-1",
+                    itemId = "filechange-1",
+                    isStreaming = true,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "diff-2",
+                    text = """
+                    Edited src/App.kt +4 -2
+                    Edited src/Composer.kt +6 -2
+                    """.trimIndent(),
+                    turnId = "turn-1",
+                    itemId = "turn-diff-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(1, merged.size)
+        assertEquals("Edited src/App.kt +4 -2\nEdited src/Composer.kt +6 -2", merged.single().text)
+    }
+
+    @Test
+    fun merge_keepsDistinctCompletedFileChangeSnapshotsForSameTurn() {
+        val existing =
+            listOf(
+                message(
+                    id = "diff-1",
+                    text = """
+                    Status: completed
+
+                    Path: src/App.kt
+                    Kind: update
+                    Totals: +2 -1
+                    """.trimIndent(),
+                    turnId = "turn-1",
+                    itemId = "turn-diff-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "diff-2",
+                    text = """
+                    Status: completed
+
+                    Path: src/Composer.kt
+                    Kind: update
+                    Totals: +3 -1
+                    """.trimIndent(),
+                    turnId = "turn-1",
+                    itemId = "turn-diff-2",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(2, merged.size)
+        assertEquals(listOf("diff-1", "diff-2"), merged.map { it.id })
+    }
+
+    @Test
+    fun merge_reconcilesThinkingSnapshotByTurnWhenItemIdChanges() {
+        val existing =
+            listOf(
+                message(
+                    id = "thinking-1",
+                    kind = CodexMessageKind.thinking,
+                    text = "Reading files",
+                    turnId = "turn-1",
+                    itemId = "turn:turn-1|kind:thinking",
+                    isStreaming = true,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "thinking-2",
+                    kind = CodexMessageKind.thinking,
+                    text = "Reading files and checking reducers",
+                    turnId = "turn-1",
+                    itemId = "reasoning-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(1, merged.size)
+        assertEquals("Reading files and checking reducers", merged.single().text)
+        assertEquals("reasoning-1", merged.single().itemId)
+        assertEquals(false, merged.single().isStreaming)
+    }
+
+    @Test
+    fun merge_reconcilesCommandSnapshotByNormalizedPreviewWhenQuotingDiffers() {
+        val existing =
+            listOf(
+                message(
+                    id = "command-1",
+                    kind = CodexMessageKind.commandExecution,
+                    text = "running \"./gradlew.bat\" :app:testDebugUnitTest",
+                    turnId = "turn-1",
+                    itemId = "turn:turn-1|kind:commandExecution",
+                    isStreaming = true,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "command-2",
+                    kind = CodexMessageKind.commandExecution,
+                    text = "completed './gradlew.bat' :app:testDebugUnitTest",
+                    turnId = "turn-1",
+                    itemId = "cmd-real-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(1, merged.size)
+        assertEquals("completed './gradlew.bat' :app:testDebugUnitTest", merged.single().text)
+        assertEquals("cmd-real-1", merged.single().itemId)
+        assertEquals(false, merged.single().isStreaming)
+    }
+
+    @Test
+    fun merge_reconcilesFailedCommandSnapshotWithChevronPhase() {
+        val existing =
+            listOf(
+                message(
+                    id = "command-1",
+                    kind = CodexMessageKind.commandExecution,
+                    text = "running> Gradle",
+                    turnId = "turn-1",
+                    itemId = "cmd-live-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "command-2",
+                    kind = CodexMessageKind.commandExecution,
+                    text = "failed> Gradle",
+                    turnId = "turn-1",
+                    itemId = "cmd-history-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(1, merged.size)
+        assertEquals("failed> Gradle", merged.single().text)
+        assertEquals("cmd-history-1", merged.single().itemId)
+    }
+
+    @Test
+    fun merge_keepsDistinctCompletedCommandsWithDifferentRealItemIds() {
+        val existing =
+            listOf(
+                message(
+                    id = "command-1",
+                    kind = CodexMessageKind.commandExecution,
+                    text = "completed npm test",
+                    turnId = "turn-1",
+                    itemId = "cmd-1",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "command-2",
+                    kind = CodexMessageKind.commandExecution,
+                    text = "completed npm run lint",
+                    turnId = "turn-1",
+                    itemId = "cmd-2",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(2, merged.size)
+        assertEquals(listOf("command-1", "command-2"), merged.map { it.id })
+    }
+
+    private fun message(
+        id: String,
+        role: CodexMessageRole = CodexMessageRole.system,
+        kind: CodexMessageKind = CodexMessageKind.fileChange,
+        text: String,
+        turnId: String?,
+        itemId: String?,
+        isStreaming: Boolean,
+        createdAt: Instant,
+        deliveryState: CodexMessageDeliveryState = CodexMessageDeliveryState.confirmed,
+    ): CodexMessage =
+        CodexMessage(
+            id = id,
+            threadId = "thread-1",
+            role = role,
+            kind = kind,
+            text = text,
+            createdAt = createdAt,
+            turnId = turnId,
+            itemId = itemId,
+            isStreaming = isStreaming,
+            deliveryState = deliveryState,
+        )
+}

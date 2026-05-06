@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes">
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+    }
+
+    body {
+      overflow: auto;
+    }
+
+    #diagram {
+      width: 100%;
+    }
+
+    #diagram svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    #fallback {
+      display: none;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin: 0;
+      font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      color: inherit;
+    }
+  </style>
+  <script src="./mermaid.min.js"></script>
+</head>
+<body>
+  <div id="diagram"></div>
+  <div id="fallback"></div>
+  <script>
+    const diagram = document.getElementById("diagram");
+    const fallback = document.getElementById("fallback");
+
+    function themeVariables(darkMode) {
+      return darkMode ? {
+        background: "transparent",
+        primaryColor: "#132033",
+        primaryBorderColor: "#456FAD",
+        primaryTextColor: "#EAF2FF",
+        secondaryColor: "#152A27",
+        secondaryBorderColor: "#3B8C7C",
+        secondaryTextColor: "#E7FFF9",
+        tertiaryColor: "#25153F",
+        tertiaryBorderColor: "#7554C7",
+        tertiaryTextColor: "#F3EDFF",
+        lineColor: "#8EA0B8",
+        textColor: "#F5F7FB"
+      } : {
+        background: "transparent",
+        primaryColor: "#E8F0FF",
+        primaryBorderColor: "#4F6FB0",
+        primaryTextColor: "#13284A",
+        secondaryColor: "#E7F6F1",
+        secondaryBorderColor: "#3E8C79",
+        secondaryTextColor: "#173B33",
+        tertiaryColor: "#F1EAFE",
+        tertiaryBorderColor: "#7A57C4",
+        tertiaryTextColor: "#321C63",
+        lineColor: "#65758B",
+        textColor: "#142033"
+      };
+    }
+
+    function configuration(darkMode) {
+      return {
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: "base",
+        flowchart: {
+          useMaxWidth: true,
+          htmlLabels: true
+        },
+        themeVariables: themeVariables(darkMode)
+      };
+    }
+
+    function currentHeight() {
+      return Math.ceil(Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight,
+        diagram.getBoundingClientRect().height,
+        fallback.getBoundingClientRect().height
+      ));
+    }
+
+    window.remodexMermaidHeight = function () {
+      return currentHeight();
+    };
+
+    window.renderRemodexMermaid = async function (source, darkMode) {
+      document.documentElement.style.colorScheme = darkMode ? "dark" : "light";
+      mermaid.initialize(configuration(darkMode));
+
+      try {
+        const result = await mermaid.render("remodex-mermaid-" + Math.random().toString(36).slice(2), source);
+        diagram.innerHTML = result.svg;
+        fallback.textContent = "";
+        fallback.style.display = "none";
+      } catch (error) {
+        diagram.innerHTML = "";
+        fallback.textContent = source;
+        fallback.style.display = "block";
+      }
+
+      return window.remodexMermaidHeight();
+    };
+  </script>
+</body>
+</html>

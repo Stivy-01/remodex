@@ -15,6 +15,9 @@ DerivedData/
 build/
 *.ipa
 
+# iOS app (excluded from this branch)
+CodexMobile/*
+
 # Environment / secrets
 .env
 .env.*
@@ -22,6 +25,8 @@ build/
 *.p12
 *.key
 *.cer
+.cocoindex_code/
+upload-keystore.jks
 CodexMobile/BuildSupport/PrivateOverrides.xcconfig
 phodex-bridge/src/private-defaults.json
 security_best_practices_report.md
@@ -46,3 +51,13 @@ $TMP_PLACEHOLDER
 
 # VS Code
 .vscode/
+
+
+# useless files
+deeplinks-D8FzxbSB.js
+desktop-tauri-roadmap.md
+IOS_UPSTREAM_DELTA_7C82966.md
+IOS_UPSTREAM_DELTA_C3A1C14.md
+main-Bw7nouYH.js
+piano.md
+prd.md

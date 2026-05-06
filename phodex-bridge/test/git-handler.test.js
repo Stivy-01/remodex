@@ -27,6 +27,7 @@ function git(cwd, ...args) {
 function makeTempRepo() {
   const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "remodex-git-handler-"));
   git(repoDir, "init", "-b", "main");
+  git(repoDir, "config", "core.autocrlf", "false");
   git(repoDir, "config", "user.name", "Remodex Tests");
   git(repoDir, "config", "user.email", "tests@example.com");
   fs.writeFileSync(path.join(repoDir, "README.md"), "# Test\n");
@@ -321,6 +322,23 @@ test("normalizeCreatedBranchName avoids double-prefixing remodex branches", () =
   assert.equal(__test.normalizeCreatedBranchName("my new branch"), "remodex/my-new-branch");
   assert.equal(__test.normalizeCreatedBranchName("feature / login page"), "remodex/feature/login-page");
   assert.equal(__test.normalizeCreatedBranchName("   "), "");
+});
+
+test("gitCreateBranch can preserve exact branch names when requested", async () => {
+  const repoDir = makeTempRepo();
+
+  try {
+    const result = await __test.gitCreateBranch(repoDir, {
+      name: "test/test",
+      prefixRemodex: false,
+    });
+
+    assert.equal(result.branch, "test/test");
+    assert.equal(result.status?.branch, "test/test");
+    assert.equal(git(repoDir, "rev-parse", "--abbrev-ref", "HEAD"), "test/test");
+  } finally {
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  }
 });
 
 test("gitCreateBranch rejects invalid Git branch names before checkout", async () => {

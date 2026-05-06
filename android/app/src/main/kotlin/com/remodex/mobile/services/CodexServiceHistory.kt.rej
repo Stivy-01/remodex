@@ -1,0 +1,10 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceHistory.kt b/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceHistory.kt	(rejected hunks)
+@@ -53,7 +53,7 @@ internal suspend fun CodexService.syncThreadHistoryInternal(
+             }.getOrNull()
+         if (decodedThread != null) {
+             val merged = applyPersistedThreadRename(applyAuthoritativeProjectPathToServerThread(decodedThread))
+-            _threads.value = upsertThreadRow(_threads.value, merged)
++            publishThreads(upsertThreadRow(_threads.value, merged))
+         }
+         val messages = ThreadHistoryDecoder.decodeFromThreadRead(tid, threadEl.map)
+         if (messages.isNotEmpty()) {

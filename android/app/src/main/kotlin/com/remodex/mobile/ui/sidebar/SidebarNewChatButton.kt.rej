@@ -1,0 +1,29 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/sidebar/SidebarNewChatButton.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/sidebar/SidebarNewChatButton.kt	(rejected hunks)
+@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.layout.size
+-import androidx.compose.material.icons.Icons
+-import androidx.compose.material.icons.filled.Add
+ import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.MaterialTheme
+@@ -19,7 +17,9 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.semantics.Role
+ import androidx.compose.ui.semantics.role
+ import androidx.compose.ui.semantics.semantics
++import androidx.compose.ui.res.painterResource
+ import androidx.compose.ui.unit.dp
++import com.composables.icons.lucide.R as LucideR
+ 
+ /**
+  * iOS-style sidebar row: small glyph tile + label (compact, not a full-width pill button).
+@@ -37,7 +37,7 @@ fun SidebarCompactActionRow(
+             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+         ) {
+             Icon(
+-                imageVector = Icons.Filled.Add,
++                painter = painterResource(LucideR.drawable.lucide_ic_plus),
+                 contentDescription = null,
+                 modifier =
+                     Modifier

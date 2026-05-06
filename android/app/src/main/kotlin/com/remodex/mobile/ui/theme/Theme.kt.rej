@@ -1,0 +1,56 @@
+diff a/android/app/src/main/kotlin/com/remodex/mobile/ui/theme/Theme.kt b/android/app/src/main/kotlin/com/remodex/mobile/ui/theme/Theme.kt	(rejected hunks)
+@@ -20,24 +20,52 @@ private val LightColorScheme =
+     lightColorScheme(
+         primary = RemodexLightPrimary,
+         onPrimary = RemodexLightOnPrimary,
++        primaryContainer = RemodexLightPrimaryContainer,
++        onPrimaryContainer = RemodexLightOnPrimaryContainer,
++        secondary = RemodexLightSecondary,
++        onSecondary = RemodexLightOnSecondary,
++        secondaryContainer = RemodexLightSecondaryContainer,
++        onSecondaryContainer = RemodexLightOnSecondaryContainer,
++        tertiary = RemodexLightSecondary,
++        onTertiary = RemodexLightOnSecondary,
++        tertiaryContainer = RemodexLightSecondaryContainer.copy(alpha = 0.94f),
++        onTertiaryContainer = RemodexLightOnSecondaryContainer,
+         background = RemodexLightBackground,
+         onBackground = RemodexLightOnBackground,
+         surface = RemodexLightSurface,
+         onSurface = RemodexLightOnSurface,
+-        onSurfaceVariant = RemodexLightOnBackground.copy(alpha = 0.72f),
++        surfaceVariant = RemodexLightSurfaceVariant,
++        onSurfaceVariant = RemodexLightOnSurfaceVariant,
+         outline = RemodexLightOutline,
++        outlineVariant = RemodexLightOutlineVariant,
++        error = RemodexLightError,
++        onError = RemodexLightOnError,
+     )
+ 
+ private val DarkColorScheme =
+     darkColorScheme(
+         primary = RemodexDarkPrimary,
+         onPrimary = RemodexDarkOnPrimary,
++        primaryContainer = RemodexDarkPrimaryContainer,
++        onPrimaryContainer = RemodexDarkOnPrimaryContainer,
++        secondary = RemodexDarkSecondary,
++        onSecondary = RemodexDarkOnSecondary,
++        secondaryContainer = RemodexDarkSecondaryContainer,
++        onSecondaryContainer = RemodexDarkOnSecondaryContainer,
++        tertiary = RemodexDarkSecondary,
++        onTertiary = RemodexDarkOnSecondary,
++        tertiaryContainer = RemodexDarkSecondaryContainer.copy(alpha = 0.96f),
++        onTertiaryContainer = RemodexDarkOnSecondaryContainer,
+         background = RemodexDarkBackground,
+         onBackground = RemodexDarkOnBackground,
+         surface = RemodexDarkSurface,
+         onSurface = RemodexDarkOnSurface,
+-        onSurfaceVariant = RemodexDarkOnBackground.copy(alpha = 0.72f),
++        surfaceVariant = RemodexDarkSurfaceVariant,
++        onSurfaceVariant = RemodexDarkOnSurfaceVariant,
+         outline = RemodexDarkOutline,
++        outlineVariant = RemodexDarkOutlineVariant,
++        error = RemodexDarkError,
++        onError = RemodexDarkOnError,
+     )
+ 
+ @Composable
