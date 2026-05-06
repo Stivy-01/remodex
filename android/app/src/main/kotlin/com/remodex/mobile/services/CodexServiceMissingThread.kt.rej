@@ -1,9 +1,0 @@
-diff a/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceMissingThread.kt b/android/app/src/main/kotlin/com/remodex/mobile/services/CodexServiceMissingThread.kt	(rejected hunks)
-@@ -19,6 +19,6 @@ internal suspend fun CodexService.handleMissingThread(threadId: String) {
-         _activeThreadId.value = null
-         sessionPersistence.saveLastActiveThreadId(null)
-     }
--    _threads.value = _threads.value.filter { it.id != tid }
-+    publishThreads(_threads.value.filter { it.id != tid })
-     runCatching { refreshThreadsInternal() }
- }
