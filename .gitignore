@@ -56,6 +56,10 @@ $TMP_PLACEHOLDER
 # VS Code
 .vscode/
 
+# Tauri logs
+remodex-host/src-tauri/target/
+remodex-host/src-tauri/*.log
+remodex-host/src-tauri/**/*.log
 
 # useless files
 deeplinks-D8FzxbSB.js
