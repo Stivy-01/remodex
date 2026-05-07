@@ -55,6 +55,7 @@ import com.remodex.mobile.core.model.CodexThread
 import com.remodex.mobile.core.error.CodexServiceError
 import com.remodex.mobile.core.model.GitBranchesWithStatusResult
 import com.remodex.mobile.core.model.CodexModelOption
+import com.remodex.mobile.core.model.CodexPluginMetadata
 import com.remodex.mobile.core.model.CodexReviewTarget
 import com.remodex.mobile.core.model.CodexServiceTier
 import com.remodex.mobile.core.model.JSONValue
@@ -78,6 +79,7 @@ import com.remodex.mobile.ui.agent.MessageList
 import com.remodex.mobile.ui.home.RootReconnectRecoveryAction
 import com.remodex.mobile.ui.home.RootReconnectUiState
 import com.remodex.mobile.services.CodexLookupService
+import com.remodex.mobile.services.isPluginListUnsupported
 import com.remodex.mobile.core.voice.BridgeVoiceRecorder
 import com.remodex.mobile.core.voice.VoiceDraftAppend
 import java.io.ByteArrayOutputStream
@@ -151,6 +153,10 @@ fun TurnConversationPane(
     var composerAttachments by remember { mutableStateOf<List<TurnComposerAttachment>>(emptyList()) }
     var mentionChips by remember(threadId) { mutableStateOf<List<ComposerMentionChipPayload>>(emptyList()) }
     var availableSkills by remember(threadId) { mutableStateOf<List<SkillAutocompleteSuggestion>>(emptyList()) }
+    var availablePlugins by remember(threadId) { mutableStateOf<List<CodexPluginMetadata>>(emptyList()) }
+    var pluginAutocompleteLoading by remember(threadId) { mutableStateOf(false) }
+    var cachedPluginSearchIndexByRoot by remember(repository) { mutableStateOf<Map<String, List<CodexPluginMetadata>>>(emptyMap()) }
+    var unsupportedPluginAutocompleteRoots by remember(repository) { mutableStateOf<Set<String>>(emptySet()) }
     var availableFileMatches by remember(threadId) { mutableStateOf<List<com.remodex.mobile.core.model.CodexFuzzyFileMatch>>(emptyList()) }
     var voicePhase by remember(threadId) { mutableStateOf(TurnVoicePhase.Idle) }
     var voiceAudioLevels by remember(threadId) { mutableStateOf<List<Float>>(emptyList()) }
@@ -735,14 +741,64 @@ fun TurnConversationPane(
                 lookupService.fuzzyFileSearch(query = query, roots = listOf(cwd))
             }.getOrDefault(emptyList())
     }
+    LaunchedEffect(threadId, ready, connectionState, activeThread?.cwd, trailingToken?.payload?.kind, trailingToken?.payload?.semanticValue) {
+        val parse = trailingToken
+        val shouldLoadPlugins =
+            parse?.payload?.kind == ComposerMentionKind.Plugin ||
+                (parse?.payload?.kind == ComposerMentionKind.File && isPluginAutocompleteQuery(parse.payload.semanticValue))
+        if (!ready || connectionState !is ConnectionState.Connected || !shouldLoadPlugins) {
+            availablePlugins = emptyList()
+            pluginAutocompleteLoading = false
+            return@LaunchedEffect
+        }
+        val cwd = activeThread?.cwd?.trim()?.takeIf { it.isNotEmpty() }
+        if (cwd.isNullOrEmpty()) {
+            availablePlugins = emptyList()
+            pluginAutocompleteLoading = false
+            return@LaunchedEffect
+        }
+        cachedPluginSearchIndexByRoot[cwd]?.let { cached ->
+            availablePlugins = cached
+            pluginAutocompleteLoading = false
+            return@LaunchedEffect
+        }
+        if (unsupportedPluginAutocompleteRoots.contains(cwd)) {
+            availablePlugins = emptyList()
+            pluginAutocompleteLoading = false
+            return@LaunchedEffect
+        }
+        pluginAutocompleteLoading = true
+        runCatching {
+            lookupService.listPlugins(cwds = listOf(cwd), forceReload = false)
+        }.onSuccess { plugins ->
+            cachedPluginSearchIndexByRoot = cachedPluginSearchIndexByRoot + (cwd to plugins)
+            availablePlugins = plugins
+        }.onFailure { error ->
+            if (isPluginListUnsupported(error)) {
+                unsupportedPluginAutocompleteRoots = unsupportedPluginAutocompleteRoots + cwd
+            }
+            availablePlugins = emptyList()
+        }
+        pluginAutocompleteLoading = false
+    }
     val autocompleteState =
-        remember(trailingToken, availableSkills, fileAutocompleteCandidates, availableFileMatches, isThreadRunning) {
+        remember(
+            trailingToken,
+            availableSkills,
+            availablePlugins,
+            pluginAutocompleteLoading,
+            fileAutocompleteCandidates,
+            availableFileMatches,
+            isThreadRunning,
+        ) {
             com.remodex.mobile.ui.turn.buildComposerAutocompleteState(
                 parse = trailingToken,
                 skillSuggestions = availableSkills,
+                pluginSuggestions = availablePlugins,
                 fileCandidates = fileAutocompleteCandidates,
                 fileMatches = availableFileMatches,
                 isThreadRunning = isThreadRunning,
+                isPluginLoading = pluginAutocompleteLoading,
             )
         }
     val listState = rememberLazyListState()

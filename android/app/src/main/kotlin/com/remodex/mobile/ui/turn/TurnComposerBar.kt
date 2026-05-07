@@ -161,6 +161,26 @@ internal fun TurnComposerBar(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (state.isLoading && state.items.isEmpty()) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text(
+                                text = stringResource(R.string.turn_runtime_loading),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
                     state.items.forEach { item ->
                         Row(
                             modifier =
@@ -513,7 +533,7 @@ private fun ComposerMentionChipStrip(
                         when (chip.kind) {
                             ComposerMentionKind.File -> "@"
                             ComposerMentionKind.Skill -> "$"
-                            ComposerMentionKind.Plugin -> "$"
+                            ComposerMentionKind.Plugin -> "@"
                             ComposerMentionKind.SlashCommand -> "/"
                         }
                     Text(text = "$prefix${chip.displayLabel ?: chip.semanticValue}")

@@ -138,7 +138,143 @@ class TimelineMessageGroupingTest {
     }
 
     @Test
-    fun assistantWorkGroup_collapsesEarlierAssistantMessagesInTurn() {
+    fun assistantWorkGroup_waitsForFinalAssistantAndCollapsesEarlierTurnItems() {
+        fun user(id: String, seconds: Long): CodexMessage =
+            CodexMessage(
+                id = id,
+                threadId = "t1",
+                role = CodexMessageRole.user,
+                kind = CodexMessageKind.chat,
+                text = id,
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+        fun assistant(id: String, seconds: Long): CodexMessage =
+            CodexMessage(
+                id = id,
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = id,
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+        fun turnCommand(id: String, seconds: Long): CodexMessage =
+            cmd(id).copy(
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+
+        val items =
+            listOf(
+                user("prompt", 0),
+                assistant("step-1", 10),
+                turnCommand("cmd-1", 20),
+                assistant("summary", 70),
+            ).toTimelineListItems(collapseLatestTurn = true)
+
+        assertEquals(3, items.size)
+        assertIs<TimelineListItem.Single>(items[0]).also {
+            assertEquals("prompt", it.message.id)
+        }
+        assertIs<TimelineListItem.AssistantWorkGroup>(items[1]).also {
+            assertEquals(listOf("step-1", "cmd-1"), it.messages.map { message -> message.id })
+        }
+        assertIs<TimelineListItem.Single>(items[2]).also {
+            assertEquals("summary", it.message.id)
+        }
+    }
+
+    @Test
+    fun assistantWorkGroup_doesNotAppearWhenTurnHasOnlyPromptAndFinalAnswer() {
+        val user =
+            CodexMessage(
+                id = "prompt",
+                threadId = "t1",
+                role = CodexMessageRole.user,
+                kind = CodexMessageKind.chat,
+                text = "prompt",
+                createdAt = t0,
+                turnId = "turn-1",
+            )
+        val final =
+            CodexMessage(
+                id = "summary",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = "summary",
+                createdAt = t0.plusSeconds(10),
+                turnId = "turn-1",
+            )
+
+        val items = listOf(user, final).toTimelineListItems(collapseLatestTurn = true)
+
+        assertEquals(2, items.size)
+        assertTrue(items.all { it is TimelineListItem.Single })
+    }
+
+    @Test
+    fun assistantWorkGroup_doesNotCollapseWhileFinalAssistantIsStreaming() {
+        fun assistant(
+            id: String,
+            seconds: Long,
+            streaming: Boolean = false,
+        ): CodexMessage =
+            CodexMessage(
+                id = id,
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = id,
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+                isStreaming = streaming,
+            )
+
+        val items = listOf(assistant("step-1", 0), assistant("summary", 70, streaming = true))
+            .toTimelineListItems(collapseLatestTurn = true)
+
+        assertEquals(2, items.size)
+        assertTrue(items.all { it is TimelineListItem.Single })
+    }
+
+    @Test
+    fun assistantWorkGroup_keepsLastAssistantMessageEvenWhenToolArrivesAfterIt() {
+        fun assistant(id: String, seconds: Long): CodexMessage =
+            CodexMessage(
+                id = id,
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = id,
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+        fun turnCommand(id: String, seconds: Long): CodexMessage =
+            cmd(id).copy(
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+
+        val items =
+            listOf(
+                assistant("step-1", 0),
+                assistant("summary", 20),
+                turnCommand("late-tool", 30),
+            ).toTimelineListItems(collapseLatestTurn = true)
+
+        assertEquals(2, items.size)
+        assertIs<TimelineListItem.AssistantWorkGroup>(items[0]).also {
+            assertEquals(listOf("step-1", "late-tool"), it.messages.map { message -> message.id })
+        }
+        assertIs<TimelineListItem.Single>(items[1]).also {
+            assertEquals("summary", it.message.id)
+        }
+    }
+
+    @Test
+    fun assistantWorkGroup_collapsesLatestTurnByDefaultWithFirstHiddenMessageKey() {
         fun assistant(id: String, seconds: Long): CodexMessage =
             CodexMessage(
                 id = id,
@@ -150,11 +286,12 @@ class TimelineMessageGroupingTest {
                 turnId = "turn-1",
             )
 
-        val items = listOf(assistant("step-1", 0), assistant("step-2", 30), assistant("summary", 70)).toTimelineListItems()
+        val items = listOf(assistant("step-1", 0), assistant("summary", 20)).toTimelineListItems()
 
         assertEquals(2, items.size)
         assertIs<TimelineListItem.AssistantWorkGroup>(items[0]).also {
-            assertEquals(listOf("step-1", "step-2"), it.messages.map { message -> message.id })
+            assertEquals("step-1", it.stableKey)
+            assertEquals(listOf("step-1"), it.messages.map { message -> message.id })
         }
         assertIs<TimelineListItem.Single>(items[1]).also {
             assertEquals("summary", it.message.id)

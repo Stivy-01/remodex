@@ -16,7 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,18 +25,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.composables.icons.lucide.R as LucideR
-import com.remodex.mobile.AppContainer
 import com.remodex.mobile.R
 import com.remodex.mobile.core.transport.ConnectionState
 import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.ui.home.RootReconnectRecoveryAction
 import com.remodex.mobile.ui.home.RootReconnectUiState
 import com.remodex.mobile.ui.navigation.AppRoutes
-import com.remodex.mobile.ui.shared.TrustedPairSnapshot
 import com.remodex.mobile.ui.sidebar.SidebarScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * Drawer sheet body: brand, search + threads (iOS-style list), footer links, Mac connection strip.
@@ -58,16 +54,6 @@ fun SidebarDrawerContent(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val relaySnapshot =
-        remember {
-            AppContainer.sessionPersistence.loadRelaySnapshot()
-        }
-    val trustedSnapshot =
-        TrustedPairSnapshot(
-            relayUrl = relaySnapshot.relayUrl,
-            macDeviceId = relaySnapshot.relayMacDeviceId,
-            lastTrustedMacDeviceId = relaySnapshot.lastTrustedMacDeviceId,
-        )
 
     Column(
         modifier =
@@ -110,6 +96,12 @@ fun SidebarDrawerContent(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 0.dp))
         SidebarScreen(
             repository = repository,
+            onOpenArchivedChats = {
+                drawerScope.launch {
+                    closeDrawer()
+                    navController.navigate(AppRoutes.Archived)
+                }
+            },
             modifier =
                 Modifier
                     .weight(1f)
@@ -166,40 +158,6 @@ fun SidebarDrawerContent(
                     )
                 }
             }
-            TextButton(
-                onClick = {
-                    drawerScope.launch {
-                        closeDrawer()
-                        onOpenPairingScanner()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.nav_pairing_scan),
-                    style = MaterialTheme.typography.labelLarge,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            TextButton(
-                onClick = {
-                    drawerScope.launch {
-                        closeDrawer()
-                        navController.navigate(AppRoutes.Archived)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.nav_archived_chats),
-                    style = MaterialTheme.typography.labelLarge,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
         }
         Box(
             modifier =
@@ -207,30 +165,48 @@ fun SidebarDrawerContent(
                     .fillMaxWidth()
                     .padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 10.dp),
         ) {
-            IconButton(
-                onClick = {
-                    drawerScope.launch {
-                        closeDrawer()
-                        navController.navigate(AppRoutes.Settings)
-                    }
-                },
+            Row(
                 modifier = Modifier.align(Alignment.CenterStart),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Icon(
-                    painter = painterResource(LucideR.drawable.lucide_ic_settings),
-                    contentDescription = stringResource(R.string.nav_settings),
-                    modifier = Modifier.size(20.dp),
-                )
+                IconButton(
+                    onClick = {
+                        drawerScope.launch {
+                            closeDrawer()
+                            navController.navigate(AppRoutes.Settings)
+                        }
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(LucideR.drawable.lucide_ic_settings),
+                        contentDescription = stringResource(R.string.nav_settings),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        drawerScope.launch {
+                            closeDrawer()
+                            onOpenPairingScanner()
+                        }
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(LucideR.drawable.lucide_ic_scan_qr_code),
+                        contentDescription = stringResource(R.string.nav_pairing_scan),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
             Text(
-                text = drawerFooterStatus(connectionState, sessionReady, trustedSnapshot),
+                text = drawerFooterStatus(connectionState, sessionReady),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.End,
                 modifier =
                     Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(start = 48.dp),
+                        .padding(start = 104.dp),
             )
         }
     }
@@ -240,25 +216,17 @@ fun SidebarDrawerContent(
 private fun drawerFooterStatus(
     conn: ConnectionState,
     sessionReady: Boolean,
-    snapshot: TrustedPairSnapshot,
 ): String {
-    val relayHost =
-        snapshot.relayUrl
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { raw -> runCatching { raw.toHttpUrlOrNull()?.host ?: raw }.getOrDefault(raw) }
-    val base =
-        when (conn) {
-            ConnectionState.Offline -> stringResource(R.string.sidebar_bridge_offline)
-            ConnectionState.Connecting -> stringResource(R.string.sidebar_bridge_connecting)
-            ConnectionState.Connected ->
-                if (sessionReady) {
-                    stringResource(R.string.sidebar_footer_connected_mac)
-                } else {
-                    stringResource(R.string.sidebar_bridge_connecting)
-                }
-            is ConnectionState.Error ->
-                stringResource(R.string.sidebar_bridge_error, conn.message)
+    return when (conn) {
+        ConnectionState.Offline -> stringResource(R.string.sidebar_bridge_offline)
+        ConnectionState.Connecting -> stringResource(R.string.sidebar_bridge_connecting)
+        ConnectionState.Connected ->
+            if (sessionReady) {
+                stringResource(R.string.sidebar_footer_connected_mac)
+            } else {
+                stringResource(R.string.sidebar_bridge_connecting)
+            }
+        is ConnectionState.Error ->
+            stringResource(R.string.sidebar_bridge_error, conn.message)
         }
-    return if (relayHost != null) "$base\n$relayHost" else base
 }

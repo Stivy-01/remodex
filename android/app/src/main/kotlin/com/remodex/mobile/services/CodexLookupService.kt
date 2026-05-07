@@ -2,6 +2,7 @@ package com.remodex.mobile.services
 
 import com.remodex.mobile.core.error.CodexServiceError
 import com.remodex.mobile.core.model.CodexFuzzyFileMatch
+import com.remodex.mobile.core.model.CodexPluginMetadata
 import com.remodex.mobile.core.model.CodexSkillMetadata
 import com.remodex.mobile.core.model.JSONValue
 import com.remodex.mobile.data.CodexRepository
@@ -52,6 +53,17 @@ class CodexLookupService(
             ?: throw CodexServiceError.InvalidInput("skills/list response missing result.data[].skills")
     }
 
+    suspend fun listPlugins(
+        cwds: List<String>,
+        forceReload: Boolean = false,
+    ): List<CodexPluginMetadata> {
+        val normalizedCwds = cwds.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+        val response = repository.sendRequest("plugin/list", pluginsListParams(normalizedCwds, forceReload))
+        return decodePluginMetadata(response.result)
+            ?.let(::mentionablePluginMetadata)
+            ?: throw CodexServiceError.InvalidInput("plugin/list response missing result.marketplaces[].plugins")
+    }
+
     private fun skillsListParams(
         cwdKey: String,
         cwds: List<String>,
@@ -64,6 +76,18 @@ class CodexLookupService(
             } else {
                 params["cwds"] = JSONValue.Arr(cwds.map(JSONValue::Str))
             }
+        }
+        if (forceReload) params["forceReload"] = JSONValue.Bool(true)
+        return JSONValue.Obj(params)
+    }
+
+    private fun pluginsListParams(
+        cwds: List<String>,
+        forceReload: Boolean,
+    ): JSONValue.Obj {
+        val params = linkedMapOf<String, JSONValue>()
+        if (cwds.isNotEmpty()) {
+            params["cwds"] = JSONValue.Arr(cwds.map(JSONValue::Str))
         }
         if (forceReload) params["forceReload"] = JSONValue.Bool(true)
         return JSONValue.Obj(params)
@@ -126,9 +150,58 @@ internal fun decodeSkillMetadata(result: JSONValue?): List<CodexSkillMetadata>? 
     }
 }
 
+internal fun decodePluginMetadata(result: JSONValue?): List<CodexPluginMetadata>? {
+    val marketplaces = result?.objectValue?.get("marketplaces")?.arrayValue ?: return null
+    val plugins = mutableListOf<CodexPluginMetadata>()
+    marketplaces.forEach { marketplaceValue ->
+        val marketplace = marketplaceValue.objectValue ?: return@forEach
+        val marketplaceName = marketplace["name"]?.stringValue?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+        val marketplacePath = marketplace["path"]?.stringValue?.trim()?.takeIf { it.isNotEmpty() }
+        marketplace["plugins"]?.arrayValue?.forEach { pluginValue ->
+            val plugin = pluginValue.objectValue ?: return@forEach
+            val pluginName = plugin["name"]?.stringValue?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+            val interfaceObject = plugin["interface"]?.objectValue
+            plugins +=
+                CodexPluginMetadata(
+                    id = plugin["id"]?.stringValue?.trim()?.takeIf { it.isNotEmpty() } ?: "$marketplaceName/$pluginName",
+                    name = pluginName,
+                    marketplaceName = marketplaceName,
+                    marketplacePath = marketplacePath,
+                    displayName =
+                        interfaceObject?.get("displayName")?.stringValue?.trim()?.takeIf { it.isNotEmpty() }
+                            ?: interfaceObject?.get("display_name")?.stringValue?.trim()?.takeIf { it.isNotEmpty() },
+                    shortDescription =
+                        interfaceObject?.get("shortDescription")?.stringValue?.trim()?.takeIf { it.isNotEmpty() }
+                            ?: interfaceObject?.get("short_description")?.stringValue?.trim()?.takeIf { it.isNotEmpty() },
+                    installed = plugin["installed"]?.boolValue ?: false,
+                    enabled = plugin["enabled"]?.boolValue ?: false,
+                    installPolicy = plugin["installPolicy"]?.stringValue ?: plugin["install_policy"]?.stringValue,
+                )
+        }
+    }
+    return plugins
+}
+
+internal fun mentionablePluginMetadata(plugins: List<CodexPluginMetadata>): List<CodexPluginMetadata> =
+    plugins
+        .filter { it.isAvailableForMention }
+        .groupBy { it.mentionPath }
+        .mapNotNull { (_, bucket) -> bucket.firstOrNull() }
+        .filter { it.name.trim().isNotEmpty() }
+        .sortedBy { it.displayTitle.lowercase() }
+
 internal fun shouldRetrySkillsListWithCwdFallback(error: Throwable): Boolean {
     val rpcFailure = error as? CodexServiceError.RpcFailure ?: return false
     if (rpcFailure.rpcError.code != -32600 && rpcFailure.rpcError.code != -32602) return false
     val message = rpcFailure.rpcError.message.lowercase()
     return listOf("cwds", "cwd", "unknown field", "missing field", "invalid").any(message::contains)
+}
+
+internal fun isPluginListUnsupported(error: Throwable): Boolean {
+    val rpcFailure = error as? CodexServiceError.RpcFailure ?: return false
+    val message = rpcFailure.rpcError.message.lowercase()
+    return rpcFailure.rpcError.code == -32601 ||
+        message.contains("method not found") ||
+        message.contains("unsupported") ||
+        message.contains("unknown method")
 }

@@ -2,6 +2,7 @@ package com.remodex.mobile.services
 
 import com.remodex.mobile.core.error.CodexServiceError
 import com.remodex.mobile.core.model.CodexAccessMode
+import com.remodex.mobile.core.model.CodexPluginMetadata
 import com.remodex.mobile.core.model.CodexTurnMention
 import com.remodex.mobile.core.model.CodexTurnSkillMention
 import com.remodex.mobile.core.model.JSONValue
@@ -109,6 +110,22 @@ class TurnStartRpcCompatTest {
     }
 
     @Test
+    fun makeTurnInputPayload_appendsPluginMentionsAsStructuredMentionItems() {
+        val payload =
+            makeTurnInputPayload(
+                userText = "Use Gmail",
+                attachments = emptyList(),
+                imageUrlKey = "url",
+                fileMentions = listOf(CodexTurnMention(name = "gmail", path = "plugin://gmail@openai-curated")),
+            )
+
+        val mention = (payload[1] as JSONValue.Obj).map
+        assertEquals("mention", mention["type"]?.stringValue)
+        assertEquals("gmail", mention["name"]?.stringValue)
+        assertEquals("plugin://gmail@openai-curated", mention["path"]?.stringValue)
+    }
+
+    @Test
     fun shouldRetryTurnStartWithoutSkillItems_matchesLegacyRuntimeErrors() {
         val err = CodexServiceError.RpcFailure(RPCError(-32602, "unsupported input item type skill"))
         assertTrue(shouldRetryTurnStartWithoutSkillItems(err))
@@ -160,5 +177,111 @@ class TurnStartRpcCompatTest {
         assertEquals(1, skills?.size)
         assertEquals("check-code", skills?.single()?.name)
         assertEquals("global", skills?.single()?.scope)
+    }
+
+    @Test
+    fun decodePluginMetadata_parsesMarketplaceShapeAndMentionPath() {
+        val plugins =
+            decodePluginMetadata(
+                JSONValue.Obj(
+                    mapOf(
+                        "marketplaces" to
+                            JSONValue.Arr(
+                                listOf(
+                                    JSONValue.Obj(
+                                        mapOf(
+                                            "name" to JSONValue.Str("openai-curated"),
+                                            "path" to JSONValue.Str("/marketplaces/openai-curated"),
+                                            "plugins" to
+                                                JSONValue.Arr(
+                                                    listOf(
+                                                        JSONValue.Obj(
+                                                            mapOf(
+                                                                "id" to JSONValue.Str("gmail-id"),
+                                                                "name" to JSONValue.Str("gmail"),
+                                                                "installed" to JSONValue.Bool(true),
+                                                                "enabled" to JSONValue.Bool(false),
+                                                                "installPolicy" to JSONValue.Str("USER"),
+                                                                "interface" to
+                                                                    JSONValue.Obj(
+                                                                        mapOf(
+                                                                            "displayName" to JSONValue.Str("Gmail"),
+                                                                            "shortDescription" to JSONValue.Str("Work with Gmail"),
+                                                                        ),
+                                                                    ),
+                                                            ),
+                                                        ),
+                                                    ),
+                                                ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                    ),
+                ),
+            )
+
+        val plugin = plugins?.single()
+        assertEquals("gmail", plugin?.name)
+        assertEquals("Gmail", plugin?.displayTitle)
+        assertEquals("plugin://gmail@openai-curated", plugin?.mentionPath)
+    }
+
+    @Test
+    fun mentionablePluginMetadata_filtersDedupesAndSorts() {
+        val plugins =
+            mentionablePluginMetadata(
+                listOf(
+                    CodexPluginMetadata(
+                        id = "z",
+                        name = "zplugin",
+                        marketplaceName = "openai-curated",
+                        displayName = "Zed",
+                        installed = false,
+                        enabled = false,
+                    ),
+                    CodexPluginMetadata(
+                        id = "gmail-1",
+                        name = "gmail",
+                        marketplaceName = "openai-curated",
+                        displayName = "Gmail",
+                        installed = true,
+                    ),
+                    CodexPluginMetadata(
+                        id = "gmail-2",
+                        name = "gmail",
+                        marketplaceName = "openai-curated",
+                        displayName = "Gmail Duplicate",
+                        enabled = true,
+                    ),
+                    CodexPluginMetadata(
+                        id = "calendar",
+                        name = "calendar",
+                        marketplaceName = "openai-curated",
+                        displayName = "Calendar",
+                        installPolicy = "INSTALLED_BY_DEFAULT",
+                    ),
+                ),
+            )
+
+        assertEquals(listOf("Calendar", "Gmail"), plugins.map { it.displayTitle })
+        assertEquals(listOf("plugin://calendar@openai-curated", "plugin://gmail@openai-curated"), plugins.map { it.mentionPath })
+    }
+
+    @Test
+    fun pluginNormalizedDiscoveryText_matchesSeparatorVariants() {
+        val plugin =
+            CodexPluginMetadata(
+                id = "gmail",
+                name = "gmail_plugin",
+                marketplaceName = "openai-curated",
+                displayName = "Gmail Plugin",
+                shortDescription = "Mail connector",
+                installed = true,
+            )
+
+        assertTrue(plugin.matchesSearch("openai-curated"))
+        assertTrue(plugin.matchesSearch("gmail-plugin"))
+        assertTrue(plugin.matchesSearch("mail_connector"))
     }
 }

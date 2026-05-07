@@ -274,13 +274,13 @@
     <string name="sidebar_bridge_offline">Bridge: offline</string>
     <string name="sidebar_bridge_connecting">Bridge: connecting…</string>
     <string name="sidebar_bridge_connected">Bridge: connected</string>
-    <string name="sidebar_footer_connected_mac">Connected to Mac</string>
+    <string name="sidebar_footer_connected_mac">Connected to PC</string>
     <string name="sidebar_bridge_error">Bridge: error — %1$s</string>
     <string name="trusted_pair_summary_title">Trusted pair</string>
     <string name="trusted_pair_summary_connected">Trusted pairing active</string>
     <string name="trusted_pair_summary_not_connected">Trusted pairing saved</string>
     <string name="trusted_pair_summary_relay">Relay: %1$s</string>
-    <string name="trusted_pair_summary_device">Mac: …%1$s</string>
+    <string name="trusted_pair_summary_device">PC: …%1$s</string>
     <string name="thread_rename_dialog_title">Rename thread</string>
     <string name="thread_rename_dialog_label">Thread name</string>
     <string name="thread_rename_dialog_confirm">Save</string>
@@ -362,7 +362,7 @@
     <string name="onboarding_step_bridge">2. Install the bridge: npm install -g remodex@latest</string>
     <string name="onboarding_step_scan">3. Run the bridge, show the pairing QR, then scan it on the next screen.</string>
     <string name="onboarding_continue">Continue to scanner</string>
-    <string name="qr_scanner_title">Pair with QR</string>
+    <string name="qr_scanner_title">Scan QR</string>
     <string name="qr_scanner_hint">Scan the JSON QR from the bridge terminal. If the relay is 127.0.0.1, enter your PC\'s LAN IP below before connecting.</string>
     <string name="qr_scanner_grant_camera">Allow camera</string>
     <string name="qr_scanner_camera_denied">Camera permission is required to scan the pairing QR.</string>

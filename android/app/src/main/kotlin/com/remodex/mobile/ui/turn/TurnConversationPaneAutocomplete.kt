@@ -3,6 +3,7 @@ package com.remodex.mobile.ui.turn
 import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexMessageKind
 import com.remodex.mobile.core.model.CodexFuzzyFileMatch
+import com.remodex.mobile.core.model.CodexPluginMetadata
 import com.remodex.mobile.core.model.CodexSkillMetadata
 import com.remodex.mobile.core.model.CodexTurnMention
 import com.remodex.mobile.core.model.CodexTurnSkillMention
@@ -121,9 +122,11 @@ internal fun extractThreadFileAutocompleteCandidates(messages: List<CodexMessage
 internal fun buildComposerAutocompleteState(
     parse: TrailingComposerMentionParse?,
     skillSuggestions: List<SkillAutocompleteSuggestion>,
+    pluginSuggestions: List<CodexPluginMetadata> = emptyList(),
     fileCandidates: List<String>,
     fileMatches: List<CodexFuzzyFileMatch> = emptyList(),
     isThreadRunning: Boolean,
+    isPluginLoading: Boolean = false,
 ): TurnComposerAutocompleteState? {
     parse ?: return null
     val query = parse.payload.semanticValue.trim()
@@ -191,7 +194,14 @@ internal fun buildComposerAutocompleteState(
                     }.toList()
             if (skills.isEmpty()) null else TurnComposerAutocompleteState("Skills", skills)
         }
-        ComposerMentionKind.Plugin -> null
+        ComposerMentionKind.Plugin -> {
+            val plugins = pluginAutocompleteItems(pluginSuggestions, query)
+            if (plugins.isEmpty() && !isPluginLoading) {
+                null
+            } else {
+                TurnComposerAutocompleteState("Plugins", plugins, isLoading = isPluginLoading)
+            }
+        }
         ComposerMentionKind.File -> {
             val candidates =
                 buildList {
@@ -228,6 +238,9 @@ internal fun buildComposerAutocompleteState(
                             )
                         },
                     )
+                    if (isPluginAutocompleteQuery(query)) {
+                        addAll(pluginAutocompleteItems(pluginSuggestions, query))
+                    }
                 }
             val files =
                 candidates
@@ -242,10 +255,50 @@ internal fun buildComposerAutocompleteState(
                     .distinctBy { it.payload.semanticValue.lowercase() }
                     .take(6)
                     .toList()
-            if (files.isEmpty()) null else TurnComposerAutocompleteState("Files", files)
+            if (files.isEmpty() && !isPluginLoading) {
+                null
+            } else {
+                val title = if (files.all { it.payload.kind == ComposerMentionKind.Plugin }) "Plugins" else "Files"
+                TurnComposerAutocompleteState(title, files, isLoading = isPluginLoading && isPluginAutocompleteQuery(query))
+            }
         }
     }
 }
+
+internal fun isPluginAutocompleteQuery(query: String): Boolean {
+    val trimmed = query.trim()
+    return trimmed.isNotEmpty() &&
+        !trimmed.contains('/') &&
+        !trimmed.contains('\\') &&
+        !trimmed.contains('.') &&
+        !trimmed.contains(':') &&
+        trimmed.all { !it.isWhitespace() && it != '@' && it != '(' && it != ')' }
+}
+
+private fun pluginAutocompleteItems(
+    plugins: List<CodexPluginMetadata>,
+    query: String,
+): List<TurnComposerAutocompleteItem> =
+    plugins
+        .asSequence()
+        .filter { it.matchesSearch(query) }
+        .take(6)
+        .map {
+            TurnComposerAutocompleteItem(
+                id = "plugin:${it.mentionPath}",
+                title = it.displayTitle,
+                subtitle = it.shortDescription ?: it.marketplaceName,
+                payload =
+                    ComposerMentionChipPayload(
+                        kind = ComposerMentionKind.Plugin,
+                        displayLabel = it.name,
+                        semanticValue = it.mentionPath,
+                        rawSegment = "@${it.name}",
+                        sourcePath = it.mentionPath,
+                    ),
+                replacementText = "@${it.name}",
+            )
+        }.toList()
 
 internal fun mergeMentionChipsIntoDraft(
     draft: String,
@@ -261,7 +314,7 @@ internal fun mergeMentionChipsIntoDraft(
                     ComposerMentionKind.Skill ->
                         chip.semanticValue.trim().takeIf { it.isNotEmpty() }?.let { "\$$it" }
                     ComposerMentionKind.Plugin ->
-                        chip.displayLabel?.trim()?.takeIf { it.isNotEmpty() }?.let { "\$$it" }
+                        chip.displayLabel?.trim()?.takeIf { it.isNotEmpty() }?.let { "@$it" }
                     ComposerMentionKind.SlashCommand -> null
                 }
             }
@@ -329,7 +382,7 @@ internal fun restoreMentionChips(
                     kind = if (isPlugin) ComposerMentionKind.Plugin else ComposerMentionKind.File,
                     displayLabel = mention.name.trim().takeIf { it.isNotEmpty() } ?: path.substringAfterLast('/', path),
                     semanticValue = path,
-                    rawSegment = if (isPlugin) "\$${mention.name}" else "@$path",
+                    rawSegment = if (isPlugin) "@${mention.name}" else "@$path",
                     sourcePath = if (isPlugin) path else null,
                 ),
             )

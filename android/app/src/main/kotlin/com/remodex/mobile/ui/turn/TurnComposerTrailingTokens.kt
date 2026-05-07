@@ -15,13 +15,13 @@ internal object TurnComposerTrailingTokens {
         if (caret <= 0) return null
         val cappedCaret = caret.coerceIn(0, text.length)
         trailingFileToken(text, cappedCaret)?.let { return it }
+        trailingPluginToken(text, cappedCaret)?.let { return it }
         val endExclusive = trailingTokenEndExclusive(text, cappedCaret)
         val start = trailingLexemeStart(text, endExclusive)
         if (start >= endExclusive) return null
         val raw = text.substring(start, endExclusive)
         val range = start until endExclusive
         return when {
-            raw.startsWith("@") -> fileMention(raw, range)
             raw.startsWith("$") -> skillMention(raw, range)
             raw.startsWith("/") -> slashCommand(raw, range)
             else -> null
@@ -45,11 +45,13 @@ internal object TurnComposerTrailingTokens {
         while (endExclusive > triggerIndex + 1 && text[endExclusive - 1].isTrailingMentionPunctuation()) {
             endExclusive--
         }
+        if (endExclusive != cappedCaret) return null
         val rawQuery = text.substring(triggerIndex + 1, endExclusive)
         val query = rawQuery.trim()
         if (query.isEmpty() || query.any { it == '\n' || it == '\r' }) return null
         if (!rawQuery.all { it.isAllowedFileQueryChar() }) return null
-        if (!isAllowedFileAutocompleteQuery(query)) return null
+        if (!isAllowedFileAutocompleteQuery(query) && !isBareLowercaseFileSearch(query)) return null
+        if (hasTrailingSentencePunctuation(query) && !isAllowedInlineFileMentionToken(query)) return null
         if (query.any { it.isWhitespace() } &&
             !query.contains('/') &&
             !query.contains('\\') &&
@@ -60,6 +62,29 @@ internal object TurnComposerTrailingTokens {
 
         val raw = text.substring(triggerIndex, endExclusive)
         return fileMention(raw, triggerIndex until endExclusive)
+    }
+
+    private fun trailingPluginToken(
+        text: String,
+        caret: Int,
+    ): TrailingComposerMentionParse? {
+        if (text.isEmpty()) return null
+        val cappedCaret = caret.coerceIn(0, text.length)
+        if (cappedCaret <= 0 || text[cappedCaret - 1].isWhitespace()) return null
+
+        val prefix = text.substring(0, cappedCaret)
+        val tokenStart = prefix.indexAfterLastWhitespace()
+        if (tokenStart >= cappedCaret || text[tokenStart] != '@') return null
+        val token = text.substring(tokenStart, cappedCaret)
+        val relativeTrigger = token.lastIndexOf('@')
+        if (relativeTrigger < 0) return null
+        val triggerIndex = tokenStart + relativeTrigger
+        val raw = text.substring(triggerIndex, cappedCaret)
+        val query = raw.drop(1)
+        if (!query.all { it.isAllowedPluginQueryChar() }) return null
+        if (query.isNotEmpty() && query.first().isUpperCase()) return null
+        if (hasTrailingSentencePunctuation(query)) return null
+        return pluginMention(raw, triggerIndex until cappedCaret)
     }
 
     /**
@@ -122,7 +147,8 @@ internal object TurnComposerTrailingTokens {
     ): TrailingComposerMentionParse? {
         val path = raw.drop(1)
         if (!path.all { it.isAllowedFileQueryChar() }) return null
-        if (!isAllowedFileAutocompleteQuery(path)) return null
+        if (!isAllowedFileAutocompleteQuery(path) && !isBareLowercaseFileSearch(path)) return null
+        if (hasTrailingSentencePunctuation(path) && !isAllowedInlineFileMentionToken(path)) return null
         val chipLabel =
             when {
                 path.isEmpty() -> ""
@@ -136,6 +162,22 @@ internal object TurnComposerTrailingTokens {
                     chipLabel.takeIf { it.isNotBlank() },
                 semanticValue =
                     path.trim('/').takeIf { it.isNotBlank() }.orEmpty(),
+                rawSegment = raw,
+            )
+        return TrailingComposerMentionParse(raw = raw, rangeInText = range, payload = payload)
+    }
+
+    private fun pluginMention(
+        raw: String,
+        range: IntRange,
+    ): TrailingComposerMentionParse? {
+        val query = raw.drop(1)
+        if (!query.all { it.isAllowedPluginQueryChar() }) return null
+        val payload =
+            ComposerMentionChipPayload(
+                kind = ComposerMentionKind.Plugin,
+                displayLabel = query.takeIf { it.isNotBlank() },
+                semanticValue = query,
                 rawSegment = raw,
             )
         return TrailingComposerMentionParse(raw = raw, rangeInText = range, payload = payload)
@@ -182,6 +224,16 @@ internal object TurnComposerTrailingTokens {
             this == '_' ||
             this == '-' ||
             this == ':'
+
+    private fun Char.isAllowedPluginQueryChar(): Boolean =
+        !isWhitespace() &&
+            this != '@' &&
+            this != '(' &&
+            this != ')' &&
+            this != '/' &&
+            this != '\\' &&
+            this != '.' &&
+            this != ':'
 
     private fun slashCommand(
         raw: String,
@@ -243,6 +295,27 @@ internal object TurnComposerTrailingTokens {
         return allowedExtensionlessFileNames.contains(trimmed)
     }
 
+    private fun isBareLowercaseFileSearch(query: String): Boolean {
+        val trimmed = query.trim()
+        return trimmed.isNotEmpty() &&
+            trimmed.first().isLowerCase() &&
+            !trimmed.contains(':') &&
+            trimmed.all { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '-' }
+    }
+
+    private fun hasTrailingSentencePunctuation(query: String): Boolean =
+        query.lastOrNull()?.let { it == ',' || it == '.' || it == ';' || it == ':' || it == '!' || it == '?' || it == ')' || it == ']' || it == '}' } == true
+
+    private fun isAllowedInlineFileMentionToken(query: String): Boolean {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return false
+        if (trimmed.lastOrNull() == ':') return false
+        val withoutTrailingPunctuation = trimmed.dropLastWhile { it == ',' || it == '.' || it == ';' || it == ':' || it == '!' || it == '?' || it == ')' || it == ']' || it == '}' }
+        return withoutTrailingPunctuation.contains('/') ||
+            withoutTrailingPunctuation.contains('\\') ||
+            withoutTrailingPunctuation.contains('.')
+    }
+
     private fun looksPathLike(token: String): Boolean {
         val withoutLineColumn = token.replace(Regex(""":[0-9]+(?::[0-9]+)?$"""), "")
         return withoutLineColumn.contains('/') ||
@@ -276,6 +349,11 @@ internal object TurnComposerTrailingTokens {
             "README",
             "Rakefile",
         )
+
+    private fun String.indexAfterLastWhitespace(): Int {
+        val lastWhitespace = indexOfLast { it.isWhitespace() }
+        return if (lastWhitespace < 0) 0 else lastWhitespace + 1
+    }
 }
 
 internal enum class ComposerMentionKind {

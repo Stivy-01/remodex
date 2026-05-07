@@ -64,6 +64,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SidebarScreen(
     repository: CodexRepository,
+    onOpenArchivedChats: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val threads by repository.threads.collectAsStateWithLifecycle()
@@ -273,6 +274,12 @@ fun SidebarScreen(
                                     deleteLocalGroupTarget = group
                                     deleteLocalGroupError = null
                                 }
+                            } else {
+                                null
+                            },
+                        onOpenArchivedChats =
+                            if (group.kind == SidebarThreadGroupKind.Archived) {
+                                onOpenArchivedChats
                             } else {
                                 null
                             },
@@ -624,6 +631,7 @@ private fun SidebarGroupHeaderRow(
     onNewChatInProject: (() -> Unit)?,
     onArchiveProjectGroup: (() -> Unit)? = null,
     onDeleteLocalGroup: (() -> Unit)? = null,
+    onOpenArchivedChats: (() -> Unit)? = null,
     collapsed: Boolean = false,
     onToggleCollapse: (() -> Unit)? = null,
 ) {
@@ -643,7 +651,9 @@ private fun SidebarGroupHeaderRow(
                 Modifier
                     .weight(1f)
                     .then(
-                        if (canCollapse) {
+                        if (onOpenArchivedChats != null) {
+                            Modifier.clickable { onOpenArchivedChats() }
+                        } else if (canCollapse) {
                             Modifier.clickable { onToggleCollapse?.invoke() }
                         } else {
                             Modifier

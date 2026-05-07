@@ -65,7 +65,9 @@ internal sealed interface TimelineListItem {
  * Collapse long consecutive runs of command-execution or file-change system messages into
  * [TimelineListItem.CommandExecutionGroup] / [TimelineListItem.FileChangeGroup].
  */
-internal fun List<CodexMessage>.toTimelineListItems(): List<TimelineListItem> {
+internal fun List<CodexMessage>.toTimelineListItems(
+    collapseLatestTurn: Boolean = true,
+): List<TimelineListItem> {
     if (isEmpty()) return emptyList()
     val visibleMessages =
         filterNot { message ->
@@ -112,7 +114,15 @@ internal fun List<CodexMessage>.toTimelineListItems(): List<TimelineListItem> {
             i++
         }
     }
-    return out.collapseAssistantWorkGroups()
+    val latestTurnId =
+        if (collapseLatestTurn) {
+            null
+        } else {
+            visibleMessages
+                .lastOrNull { !it.turnId.isNullOrBlank() }
+                ?.turnId
+        }
+    return out.collapseAssistantWorkGroups(excludedTurnId = latestTurnId)
 }
 
 private fun CodexMessage.toAssistantTimelineChunks(): List<TimelineListItem.MessageChunk>? {
@@ -179,45 +189,48 @@ internal fun splitAssistantMarkdownForTimeline(text: String): List<String> {
     return chunks.filter { it.isNotBlank() }.ifEmpty { listOf(text) }
 }
 
-private fun List<TimelineListItem>.collapseAssistantWorkGroups(): List<TimelineListItem> {
-    if (size < 3) return this
-    val assistantItems =
+private fun List<TimelineListItem>.collapseAssistantWorkGroups(excludedTurnId: String?): List<TimelineListItem> {
+    if (size < 2) return this
+    val turnItems =
         mapIndexedNotNull { index, item ->
-            val message = item.assistantBaseMessage() ?: return@mapIndexedNotNull null
-            val turnId = message.turnId?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
-            IndexedAssistantItem(
+            val messages = item.timelineMessages()
+            val turnId = messages.firstNotNullOfOrNull { it.turnId?.takeIf(String::isNotBlank) }
+                ?: return@mapIndexedNotNull null
+            IndexedTurnItem(
                 index = index,
                 turnId = turnId,
-                message = message,
+                item = item,
+                messages = messages,
             )
         }
     val hiddenIndexes = mutableSetOf<Int>()
     val workGroupsByInsertIndex = mutableMapOf<Int, TimelineListItem.AssistantWorkGroup>()
-    assistantItems
+    turnItems
         .groupBy { it.turnId }
         .values
-        .forEach { turnItems ->
-            val uniqueMessages = turnItems.distinctBy { it.message.id }
-            if (uniqueMessages.size < 2) return@forEach
-            val latestMessageId = uniqueMessages.last().message.id
-            val hiddenItems = uniqueMessages.dropLast(1)
-            hiddenIndexes +=
-                turnItems
-                    .filter { it.message.id != latestMessageId }
-                    .map { it.index }
-            val hiddenMessages = hiddenItems.map { it.message }
-            val first = hiddenMessages.minByOrNull { it.createdAt }
-            val last = hiddenMessages.maxByOrNull { it.createdAt }
+        .forEach { itemsForTurn ->
+            if (itemsForTurn.firstOrNull()?.turnId == excludedTurnId) return@forEach
+            val finalAssistantMessage = itemsForTurn.lastAssistantChatMessageOrNull() ?: return@forEach
+            if (finalAssistantMessage.isStreaming) return@forEach
+            val hiddenItems =
+                itemsForTurn.filter { item ->
+                    finalAssistantMessage.id !in item.messages.map { it.id } &&
+                        item.item.isAssistantWorkItem()
+                }
+            if (hiddenItems.isEmpty()) return@forEach
+            hiddenIndexes += hiddenItems.map { it.index }
+            val workMessages = hiddenItems.flatMap { it.messages }
+            val first = workMessages.minByOrNull { it.createdAt }
             val duration =
-                if (first != null && last != null && last.createdAt >= first.createdAt) {
-                    Duration.between(first.createdAt, last.createdAt)
+                if (first != null && finalAssistantMessage.createdAt >= first.createdAt) {
+                    Duration.between(first.createdAt, finalAssistantMessage.createdAt)
                 } else {
                     null
                 }
             workGroupsByInsertIndex[hiddenItems.first().index] =
                 TimelineListItem.AssistantWorkGroup(
-                    groupKey = "${turnItems.first().turnId}-assistant-work",
-                    messages = hiddenMessages,
+                    groupKey = hiddenItems.first().item.stableKey,
+                    messages = workMessages,
                     duration = duration,
                 )
         }
@@ -232,19 +245,42 @@ private fun List<TimelineListItem>.collapseAssistantWorkGroups(): List<TimelineL
     return out
 }
 
-private data class IndexedAssistantItem(
+private data class IndexedTurnItem(
     val index: Int,
     val turnId: String,
-    val message: CodexMessage,
+    val item: TimelineListItem,
+    val messages: List<CodexMessage>,
 )
 
-private fun TimelineListItem.assistantBaseMessage(): CodexMessage? =
+private fun List<IndexedTurnItem>.lastAssistantChatMessageOrNull(): CodexMessage? =
+    asReversed()
+        .asSequence()
+        .flatMap { indexedItem ->
+            when (val item = indexedItem.item) {
+                is TimelineListItem.MessageChunk ->
+                    if (item.isLastChunk) {
+                        sequenceOf(item.message)
+                    } else {
+                        emptySequence()
+                    }
+                else -> indexedItem.messages.asSequence()
+            }
+        }
+        .firstOrNull { message ->
+            message.role == CodexMessageRole.assistant &&
+                message.kind == CodexMessageKind.chat
+        }
+
+private fun TimelineListItem.timelineMessages(): List<CodexMessage> =
     when (this) {
-        is TimelineListItem.Single ->
-            message.takeIf { it.role == CodexMessageRole.assistant && it.kind == CodexMessageKind.chat }
-        is TimelineListItem.MessageChunk ->
-            message.takeIf { it.role == CodexMessageRole.assistant && it.kind == CodexMessageKind.chat }
-        is TimelineListItem.AssistantWorkGroup -> null
-        is TimelineListItem.CommandExecutionGroup -> null
-        is TimelineListItem.FileChangeGroup -> null
+        is TimelineListItem.Single -> listOf(message)
+        is TimelineListItem.MessageChunk -> listOf(message)
+        is TimelineListItem.AssistantWorkGroup -> messages
+        is TimelineListItem.CommandExecutionGroup -> messages
+        is TimelineListItem.FileChangeGroup -> messages
+    }
+
+private fun TimelineListItem.isAssistantWorkItem(): Boolean =
+    timelineMessages().any { message ->
+        message.role == CodexMessageRole.assistant || message.role == CodexMessageRole.system
     }

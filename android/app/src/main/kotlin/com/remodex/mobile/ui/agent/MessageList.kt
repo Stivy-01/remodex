@@ -11,14 +11,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -27,7 +24,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -195,34 +191,12 @@ fun MessageList(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(0.dp),
                     ) {
-                        when (item) {
-                            is TimelineListItem.Single ->
-                                messageContent(item.message)
-                            is TimelineListItem.MessageChunk ->
-                                messageContent(item.toRenderMessage())
-                            is TimelineListItem.AssistantWorkGroup ->
-                                AssistantWorkGroupRow(
-                                    group = item,
-                                    messageContent = messageContent,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            is TimelineListItem.CommandExecutionGroup ->
-                                TurnTimelineGroupedRunsRow(
-                                    groupKey = item.stableKey,
-                                    collapsedTitle =
-                                        stringResource(R.string.turn_timeline_group_executed_commands),
-                                    messages = item.messages,
-                                    commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
-                                )
-                            is TimelineListItem.FileChangeGroup ->
-                                TurnTimelineGroupedRunsRow(
-                                    groupKey = item.stableKey,
-                                    collapsedTitle =
-                                        stringResource(R.string.turn_timeline_group_modified_files),
-                                    messages = item.messages,
-                                    commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
-                                )
-                        }
+                        TimelineListItemContent(
+                            item = item,
+                            messageContent = messageContent,
+                            commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                         if (showTrailingActions && index == lastAssistantDisplayIndex) {
                             Row(
                                 modifier =
@@ -300,6 +274,41 @@ fun MessageList(
     }
 }
 
+@Composable
+private fun TimelineListItemContent(
+    item: TimelineListItem,
+    messageContent: @Composable (CodexMessage) -> Unit,
+    commandExecutionDetailsByItemId: Map<String, CommandExecutionDetails>,
+    modifier: Modifier = Modifier,
+) {
+    when (item) {
+        is TimelineListItem.Single ->
+            messageContent(item.message)
+        is TimelineListItem.MessageChunk ->
+            messageContent(item.toRenderMessage())
+        is TimelineListItem.AssistantWorkGroup ->
+            AssistantWorkGroupRow(
+                group = item,
+                messageContent = messageContent,
+                modifier = modifier,
+            )
+        is TimelineListItem.CommandExecutionGroup ->
+            TurnTimelineGroupedRunsRow(
+                groupKey = item.stableKey,
+                collapsedTitle = stringResource(R.string.turn_timeline_group_executed_commands),
+                messages = item.messages,
+                commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
+            )
+        is TimelineListItem.FileChangeGroup ->
+            TurnTimelineGroupedRunsRow(
+                groupKey = item.stableKey,
+                collapsedTitle = stringResource(R.string.turn_timeline_group_modified_files),
+                messages = item.messages,
+                commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
+            )
+    }
+}
+
 private fun CodexMessage.timelineContentType(): String =
     "${role.name}_${kind.name}"
 
@@ -353,25 +362,15 @@ private fun AssistantWorkGroupRow(
         }
         HorizontalDivider(color = colors.outline.copy(alpha = 0.14f))
         if (expanded) {
-            Surface(
+            Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 520.dp)
                         .padding(top = 6.dp),
-                shape = MaterialTheme.shapes.small,
-                color = colors.surface.copy(alpha = 0.0f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Column(
-                    modifier =
-                        Modifier
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    group.messages.forEach { message ->
-                        messageContent(message)
-                    }
+                group.messages.forEach { message ->
+                    messageContent(message)
                 }
             }
         }

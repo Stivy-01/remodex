@@ -3,8 +3,9 @@ package com.remodex.mobile.ui.turn
 internal data class TurnComposerAutocompleteState(
     val title: String,
     val items: List<TurnComposerAutocompleteItem>,
+    val isLoading: Boolean = false,
 ) {
-    val isVisible: Boolean get() = items.isNotEmpty()
+    val isVisible: Boolean get() = items.isNotEmpty() || isLoading
 }
 
 internal data class TurnComposerAutocompleteItem(
