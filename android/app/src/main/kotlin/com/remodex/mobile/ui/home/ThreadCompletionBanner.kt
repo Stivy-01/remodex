@@ -61,6 +61,7 @@ enum class GitActionProgressPhase {
 @Immutable
 data class GitActionProgressBannerState(
     val phase: GitActionProgressPhase,
+    val includesPush: Boolean = true,
     val includesPullRequest: Boolean = false,
 ) {
     val title: String get() = phase.title
@@ -99,24 +100,26 @@ data class GitActionProgressBannerState(
                             },
                     ),
                 )
-                add(
-                    GitActionProgressStep(
-                        text =
-                            if (phase == GitActionProgressPhase.pushing) {
-                                "Pushing..."
-                            } else {
-                                "Pushed"
-                            },
-                        status =
-                            when (phase) {
-                                GitActionProgressPhase.resolvingCommitMessage,
-                                GitActionProgressPhase.committing,
-                                -> GitActionProgressStepStatus.pending
-                                GitActionProgressPhase.pushing -> GitActionProgressStepStatus.active
-                                else -> GitActionProgressStepStatus.complete
-                            },
-                    ),
-                )
+                if (includesPush) {
+                    add(
+                        GitActionProgressStep(
+                            text =
+                                if (phase == GitActionProgressPhase.pushing) {
+                                    "Pushing..."
+                                } else {
+                                    "Pushed"
+                                },
+                            status =
+                                when (phase) {
+                                    GitActionProgressPhase.resolvingCommitMessage,
+                                    GitActionProgressPhase.committing,
+                                    -> GitActionProgressStepStatus.pending
+                                    GitActionProgressPhase.pushing -> GitActionProgressStepStatus.active
+                                    else -> GitActionProgressStepStatus.complete
+                                },
+                        ),
+                    )
+                }
                 if (includesPullRequest) {
                     add(
                         GitActionProgressStep(
@@ -130,8 +133,13 @@ data class GitActionProgressBannerState(
                                 when (phase) {
                                     GitActionProgressPhase.resolvingCommitMessage,
                                     GitActionProgressPhase.committing,
-                                    GitActionProgressPhase.pushing,
                                     -> GitActionProgressStepStatus.pending
+                                    GitActionProgressPhase.pushing ->
+                                        if (includesPush) {
+                                            GitActionProgressStepStatus.pending
+                                        } else {
+                                            GitActionProgressStepStatus.active
+                                        }
                                     GitActionProgressPhase.preparingPullRequest -> GitActionProgressStepStatus.active
                                     GitActionProgressPhase.done -> GitActionProgressStepStatus.complete
                                 },

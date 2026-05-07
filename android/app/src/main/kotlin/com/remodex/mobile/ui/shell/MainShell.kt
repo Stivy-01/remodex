@@ -147,8 +147,10 @@ fun MainShell(
     var gitActionError by remember { mutableStateOf<String?>(null) }
     var gitActionProgressMessage by remember { mutableStateOf<String?>(null) }
     var gitActionProgressPhase by remember { mutableStateOf<GitActionProgressPhase?>(null) }
+    var gitActionProgressIncludesPush by remember { mutableStateOf(true) }
     var gitActionProgressIncludesPullRequest by remember { mutableStateOf(false) }
     var gitActionSheetMode by remember { mutableStateOf<GitActionSheetMode?>(null) }
+    var gitActionSheetInitialNextStep by remember { mutableStateOf<GitActionNextStep?>(null) }
     var showGitInitPrompt by remember { mutableStateOf(false) }
     var gitInitError by remember { mutableStateOf<String?>(null) }
     var gitSyncAlert by remember { mutableStateOf<TurnGitSyncAlert?>(null) }
@@ -258,6 +260,7 @@ fun MainShell(
         gitActionProgressPhase?.let {
             GitActionProgressBannerState(
                 phase = it,
+                includesPush = gitActionProgressIncludesPush,
                 includesPullRequest = gitActionProgressIncludesPullRequest,
             )
         }
@@ -330,6 +333,8 @@ fun MainShell(
     ) {
         gitActionProgressMessage = null
         gitActionProgressPhase = null
+        gitActionProgressIncludesPush = true
+        gitActionProgressIncludesPullRequest = false
         when {
             e is GitActionsError.BridgeFailure && e.errorCode == "nothing_to_commit" -> onNothingToCommit()
             e is GitActionsError.BridgeFailure &&
@@ -432,12 +437,18 @@ fun MainShell(
                 val git = GitActionsService(repository, cwd)
                 when (submission.nextStep) {
                     GitActionNextStep.commit -> {
-                        gitActionProgressMessage = "Committing changes..."
-                        git.commit(resolveCommitMessage(git, submission.commitMessage))
-                        gitActionProgressMessage = "Committed changes."
+                        gitActionProgressMessage = null
+                        gitActionProgressIncludesPush = false
+                        gitActionProgressIncludesPullRequest = false
+                        gitActionProgressPhase = GitActionProgressPhase.resolvingCommitMessage
+                        val commitMessage = resolveCommitMessage(git, submission.commitMessage)
+                        gitActionProgressPhase = GitActionProgressPhase.committing
+                        git.commit(commitMessage)
+                        gitActionProgressPhase = GitActionProgressPhase.done
                     }
                     GitActionNextStep.commitAndPush -> {
                         gitActionProgressMessage = null
+                        gitActionProgressIncludesPush = true
                         gitActionProgressIncludesPullRequest = false
                         gitActionProgressPhase = GitActionProgressPhase.resolvingCommitMessage
                         val commitMessage = resolveCommitMessage(git, submission.commitMessage)
@@ -449,6 +460,7 @@ fun MainShell(
                     }
                     GitActionNextStep.commitPushAndPullRequest -> {
                         gitActionProgressMessage = null
+                        gitActionProgressIncludesPush = true
                         gitActionProgressIncludesPullRequest = true
                         gitActionProgressPhase = GitActionProgressPhase.resolvingCommitMessage
                         val commitMessage = resolveCommitMessage(git, submission.commitMessage)
@@ -742,18 +754,22 @@ fun MainShell(
         when (action) {
             TurnGitActionKind.commit -> {
                 gitActionSheetMode = GitActionSheetMode.commit
+                gitActionSheetInitialNextStep = GitActionNextStep.commit
                 return
             }
             TurnGitActionKind.push -> {
                 gitActionSheetMode = GitActionSheetMode.push
+                gitActionSheetInitialNextStep = GitActionNextStep.push
                 return
             }
             TurnGitActionKind.commitAndPush -> {
                 gitActionSheetMode = GitActionSheetMode.commit
+                gitActionSheetInitialNextStep = GitActionNextStep.commitAndPush
                 return
             }
             TurnGitActionKind.createPR -> {
                 gitActionSheetMode = GitActionSheetMode.createPullRequest
+                gitActionSheetInitialNextStep = GitActionNextStep.createPullRequest
                 return
             }
             TurnGitActionKind.previewCommitPushToast -> {
@@ -762,6 +778,7 @@ fun MainShell(
                     gitActionBusy = true
                     gitActionError = null
                     gitActionProgressMessage = null
+                    gitActionProgressIncludesPush = true
                     gitActionProgressIncludesPullRequest = false
                     gitActionProgressPhase = GitActionProgressPhase.resolvingCommitMessage
                     delay(900)
@@ -1079,10 +1096,14 @@ fun MainShell(
     GitActionBottomSheet(
         visible = gitActionSheetMode != null,
         mode = gitActionSheetMode,
+        initialNextStep = gitActionSheetInitialNextStep,
         status = repoStatusSnapshot,
         defaultBaseBranch = defaultGitBaseBranch,
         isBusy = gitActionBusy,
-        onDismiss = { gitActionSheetMode = null },
+        onDismiss = {
+            gitActionSheetMode = null
+            gitActionSheetInitialNextStep = null
+        },
         onSubmit = { executeGitActionSheet(it) },
     )
 

@@ -69,6 +69,7 @@ data class GitActionSheetSubmission(
 fun GitActionBottomSheet(
     visible: Boolean,
     mode: GitActionSheetMode?,
+    initialNextStep: GitActionNextStep?,
     status: GitRepoSyncResult?,
     defaultBaseBranch: String?,
     isBusy: Boolean,
@@ -81,10 +82,12 @@ fun GitActionBottomSheet(
     var pullRequestTitle by remember(mode) { mutableStateOf("") }
     var pullRequestBody by remember(mode) { mutableStateOf("") }
     var baseBranch by remember(mode, defaultBaseBranch) { mutableStateOf(defaultBaseBranch.orEmpty()) }
-    var selectedNextStep by remember(mode) { mutableStateOf(defaultNextStep(mode)) }
+    var selectedNextStep by remember(mode, initialNextStep) {
+        mutableStateOf(initialNextStepForMode(mode, initialNextStep))
+    }
 
-    LaunchedEffect(mode) {
-        selectedNextStep = defaultNextStep(mode)
+    LaunchedEffect(mode, initialNextStep) {
+        selectedNextStep = initialNextStepForMode(mode, initialNextStep)
     }
 
     ModalBottomSheet(
@@ -443,6 +446,14 @@ private fun defaultNextStep(mode: GitActionSheetMode): GitActionNextStep =
         GitActionSheetMode.push -> GitActionNextStep.push
         GitActionSheetMode.createPullRequest -> GitActionNextStep.createPullRequest
     }
+
+private fun initialNextStepForMode(
+    mode: GitActionSheetMode,
+    initialNextStep: GitActionNextStep?,
+): GitActionNextStep =
+    initialNextStep
+        ?.takeIf { it in nextStepsFor(mode) }
+        ?: defaultNextStep(mode)
 
 private fun nextStepsFor(mode: GitActionSheetMode): List<GitActionNextStep> =
     when (mode) {
