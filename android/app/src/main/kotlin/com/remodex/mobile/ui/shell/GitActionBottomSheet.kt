@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -62,6 +63,7 @@ data class GitActionSheetSubmission(
     val pullRequestBody: String,
     val baseBranch: String,
     val nextStep: GitActionNextStep,
+    val pushRemoteName: String? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,12 +84,18 @@ fun GitActionBottomSheet(
     var pullRequestTitle by remember(mode) { mutableStateOf("") }
     var pullRequestBody by remember(mode) { mutableStateOf("") }
     var baseBranch by remember(mode, defaultBaseBranch) { mutableStateOf(defaultBaseBranch.orEmpty()) }
+    var pushToForkRemote by remember(mode) { mutableStateOf(false) }
     var selectedNextStep by remember(mode, initialNextStep) {
         mutableStateOf(initialNextStepForMode(mode, initialNextStep))
     }
 
     LaunchedEffect(mode, initialNextStep) {
         selectedNextStep = initialNextStepForMode(mode, initialNextStep)
+    }
+    LaunchedEffect(selectedNextStep) {
+        if (!selectedNextStep.usesPushRemote) {
+            pushToForkRemote = false
+        }
     }
 
     ModalBottomSheet(
@@ -153,6 +161,14 @@ fun GitActionBottomSheet(
                 }
             }
 
+            if (selectedNextStep.usesPushRemote) {
+                ForkRemoteCheckbox(
+                    checked = pushToForkRemote,
+                    enabled = !isBusy,
+                    onCheckedChange = { pushToForkRemote = it },
+                )
+            }
+
             Text(
                 text = "Next step",
                 style = MaterialTheme.typography.labelLarge,
@@ -186,6 +202,7 @@ fun GitActionBottomSheet(
                                 pullRequestBody = pullRequestBody,
                                 baseBranch = baseBranch,
                                 nextStep = selectedNextStep,
+                                pushRemoteName = if (pushToForkRemote) "fork" else null,
                             ),
                         )
                     },
@@ -204,6 +221,40 @@ fun GitActionBottomSheet(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ForkRemoteCheckbox(
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onCheckedChange(!checked) }
+                .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Push to fork remote",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = "Runs git push fork HEAD instead of pushing to the tracked remote.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -490,6 +541,19 @@ private fun nextStepDetail(step: GitActionNextStep): String? =
         -> "Opens GitHub with generated title and body if fields are empty."
         else -> null
     }
+
+private val GitActionNextStep.usesPushRemote: Boolean
+    get() =
+        when (this) {
+            GitActionNextStep.commitAndPush,
+            GitActionNextStep.push,
+            -> true
+            GitActionNextStep.commit,
+            GitActionNextStep.commitPushAndPullRequest,
+            GitActionNextStep.pushAndPullRequest,
+            GitActionNextStep.createPullRequest,
+            -> false
+        }
 
 private fun canSubmit(
     mode: GitActionSheetMode,

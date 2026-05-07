@@ -111,7 +111,7 @@ async function handleGitMethod(method, params, options = {}) {
     case "git/generateCommitMessage":
       return gitGenerateCommitMessage(cwd, params, options);
     case "git/push":
-      return gitPush(cwd);
+      return gitPush(cwd, params);
     case "git/pull":
       return gitPull(cwd);
     case "git/branches":
@@ -400,18 +400,30 @@ async function threadGenerateTitle(params, options = {}) {
 
 // ─── Git Push ─────────────────────────────────────────────────
 
-async function gitPush(cwd) {
+async function gitPush(cwd, params = {}) {
   try {
     const statusOutput = await git(cwd, "status", "--porcelain=v1", "-b");
     const branchLine = statusOutput.trim().split("\n").filter(Boolean)[0] || "";
     const tracking = parseTrackingFromStatus(branchLine);
-    if (!(await pushRemoteAvailable(cwd, tracking))) {
-      throw gitError("no_remote", "Add a Git remote before pushing.");
+    const requestedRemote = normalizeRemoteName(params.remote || params.pushRemote || params.remoteName);
+    const remote = requestedRemote || trackingRemoteName(tracking) || "origin";
+    if (!(await remoteExists(cwd, remote))) {
+      throw gitError(
+        "no_remote",
+        requestedRemote
+          ? `Remote '${requestedRemote}' is not configured. Add it before pushing to your fork.`
+          : "Add a Git remote before pushing."
+      );
     }
-    const remote = trackingRemoteName(tracking) || "origin";
 
     const branchOutput = await git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
     const branch = branchOutput.trim();
+
+    if (requestedRemote) {
+      await git(cwd, "push", requestedRemote, "HEAD");
+      const status = await gitStatus(cwd);
+      return { branch, remote, status };
+    }
 
     // Try normal push first; if no upstream, set it
     try {
@@ -1078,7 +1090,7 @@ async function gitRunStackedAction(cwd, params, options = {}) {
     emitPhase("push", "started");
     result.push = {
       state: "pushed",
-      ...(await gitPush(cwd)),
+      ...(await gitPush(cwd, params)),
     };
     emitPhase("push", "completed");
   }
@@ -1108,7 +1120,7 @@ async function gitCreatePullRequest(cwd, params, options = {}) {
   }
 
   if (params.pushBeforeCreate !== false && (!status.tracking || status.ahead > 0)) {
-    await gitPush(cwd);
+    await gitPush(cwd, params);
   }
 
   const branchResult = await gitBranches(cwd);
@@ -1587,6 +1599,17 @@ function normalizeNonEmptyLine(rawValue) {
   return rawValue
     .split("\n")[0]
     .trim();
+}
+
+function normalizeRemoteName(rawValue) {
+  const remote = normalizeNonEmptyLine(rawValue);
+  if (!remote) {
+    return "";
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(remote)) {
+    throw gitError("invalid_remote", "Remote name contains unsupported characters.");
+  }
+  return remote;
 }
 
 function normalizeNonEmptyMultilineString(rawValue) {

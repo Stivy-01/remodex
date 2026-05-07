@@ -455,7 +455,7 @@ fun MainShell(
                         gitActionProgressPhase = GitActionProgressPhase.committing
                         git.commit(commitMessage)
                         gitActionProgressPhase = GitActionProgressPhase.pushing
-                        git.push()
+                        git.push(submission.pushRemoteName)
                         gitActionProgressPhase = GitActionProgressPhase.done
                     }
                     GitActionNextStep.commitPushAndPullRequest -> {
@@ -467,19 +467,19 @@ fun MainShell(
                         gitActionProgressPhase = GitActionProgressPhase.committing
                         git.commit(commitMessage)
                         gitActionProgressPhase = GitActionProgressPhase.pushing
-                        git.push()
+                        git.push(submission.pushRemoteName)
                         gitActionProgressPhase = GitActionProgressPhase.preparingPullRequest
                         openPullRequestUrl(git, submission)
                         gitActionProgressPhase = GitActionProgressPhase.done
                     }
                     GitActionNextStep.push -> {
                         gitActionProgressMessage = "Pushing branch..."
-                        git.push()
+                        git.push(submission.pushRemoteName)
                         gitActionProgressMessage = "Pushed branch."
                     }
                     GitActionNextStep.pushAndPullRequest -> {
                         gitActionProgressMessage = "Pushing branch..."
-                        git.push()
+                        git.push(submission.pushRemoteName)
                         gitActionProgressMessage = "Preparing pull request..."
                         openPullRequestUrl(git, submission)
                         gitActionProgressMessage = "Pull request draft opened."

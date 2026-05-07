@@ -125,8 +125,14 @@ class GitActionsService(
         return GitGeneratedPullRequestDraftResult.fromJson(json)
     }
 
-    suspend fun push(): GitPushResult {
-        val json = request("git/push")
+    suspend fun push(remoteName: String? = null): GitPushResult {
+        val extra =
+            if (remoteName.isNullOrBlank()) {
+                emptyMap()
+            } else {
+                mapOf("remote" to JSONValue.Str(remoteName))
+            }
+        val json = request("git/push", extra)
         return GitPushResult.fromJson(json)
     }
 
@@ -229,6 +235,7 @@ class GitActionsService(
                 "nothing_to_commit" -> "Nothing to commit."
                 "nothing_to_push" -> "Nothing to push."
                 "push_rejected" -> "Push rejected. Pull changes first."
+                "invalid_remote" -> f
                 "branch_is_main" -> "Cannot operate on the main branch."
                 "protected_branch" -> "This branch is protected."
                 "branch_behind_remote" -> "Branch is behind remote. Pull first."

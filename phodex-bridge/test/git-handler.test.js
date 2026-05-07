@@ -459,6 +459,45 @@ test("gitPush allows an existing upstream remote that is not origin", async () =
   }
 });
 
+test("gitPush can target an explicit fork remote", async () => {
+  const repoDir = makeTempRepo();
+  const originDir = makeBareRemote();
+  const forkDir = makeBareRemote();
+
+  try {
+    git(originDir, "init", "--bare");
+    git(forkDir, "init", "--bare");
+    git(repoDir, "remote", "add", "origin", originDir);
+    git(repoDir, "remote", "add", "fork", forkDir);
+    git(repoDir, "push", "-u", "origin", "main");
+
+    fs.writeFileSync(path.join(repoDir, "README.md"), "# Test\n\npush fork\n");
+    git(repoDir, "add", "README.md");
+    git(repoDir, "commit", "-m", "Push fork");
+    const localHead = git(repoDir, "rev-parse", "HEAD");
+
+    const response = await new Promise((resolve) => {
+      handleGitRequest(
+        JSON.stringify({
+          id: 1,
+          method: "git/push",
+          params: { cwd: repoDir, remote: "fork" },
+        }),
+        (rawResponse) => resolve(JSON.parse(rawResponse))
+      );
+    });
+
+    assert.equal(response.error, undefined);
+    assert.equal(response.result.remote, "fork");
+    assert.equal(git(forkDir, "rev-parse", "main"), localHead);
+    assert.notEqual(git(originDir, "rev-parse", "main"), localHead);
+  } finally {
+    fs.rmSync(repoDir, { recursive: true, force: true });
+    fs.rmSync(originDir, { recursive: true, force: true });
+    fs.rmSync(forkDir, { recursive: true, force: true });
+  }
+});
+
 test("gitPush rejects before running push when origin is missing", async () => {
   const repoDir = makeTempRepo();
 
