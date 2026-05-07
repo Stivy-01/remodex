@@ -491,7 +491,9 @@ fun MainShell(
                     }
                 }
             }
+            gitActionError = null
             gitActionSheetMode = null
+            gitActionSheetInitialNextStep = null
         } catch (e: Throwable) {
             handleGitActionFailure(e) { showNothingToCommit = true }
         } finally {
@@ -1235,6 +1237,7 @@ fun MainShell(
         AlertDialog(
             onDismissRequest = { gitActionError = null },
             title = { Text(stringResource(R.string.git_error_title)) },
+            text = { Text(err) },
             confirmButton = {
                 TextButton(onClick = { gitActionError = null }) {
                     Text(stringResource(android.R.string.ok))
