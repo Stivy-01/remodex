@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Generated/bundled host resources
+src-tauri/bundled/
+
+# Local Tauri manifest churn
+src-tauri/Cargo.toml
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
