@@ -141,7 +141,7 @@ internal object CommandHumanizer {
             extractWindowsPowerShellCommandPayload(trimmed)
                 ?: return null
         return CommandHumanizedLabel(
-            verb = if (isRunning) "Esecuzione di" else "Esecuzione completata di",
+            verb = if (isRunning) "Running" else "Completed",
             target = "'$command'",
         )
     }

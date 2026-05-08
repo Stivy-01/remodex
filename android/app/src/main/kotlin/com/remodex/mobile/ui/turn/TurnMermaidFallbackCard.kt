@@ -124,7 +124,7 @@ internal fun TurnMermaidFallbackCard(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 TextButton(onClick = { showPreview = true }) {
-                    Text(text = "Anteprima")
+                    Text(text = "Preview")
                 }
                 IconButton(
                     onClick = {
@@ -204,12 +204,12 @@ private fun TurnMermaidPreviewDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        text = "Anteprima Mermaid",
+                        text = "Mermaid preview",
                         style = MaterialTheme.typography.titleMedium,
                         color = colors.onBackground,
                     )
                     TextButton(onClick = onDismiss) {
-                        Text(text = "Chiudi")
+                        Text(text = "Close")
                     }
                 }
 

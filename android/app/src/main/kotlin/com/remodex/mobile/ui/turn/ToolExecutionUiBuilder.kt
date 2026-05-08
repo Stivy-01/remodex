@@ -105,20 +105,20 @@ internal object ToolExecutionSubtitlePolicy {
 
         if (gradleInvocation(norm)) {
             return when {
-                Regex("""\b(test|connectedcheck|instrumenttest|check)\b""").containsMatchIn(norm) -> "Test Gradle"
-                Regex("""\b(assemble|bundle|install|package|build)\b""").containsMatchIn(norm) -> "Build Gradle"
+                Regex("""\b(test|connectedcheck|instrumenttest|check)\b""").containsMatchIn(norm) -> "Gradle tests"
+                Regex("""\b(assemble|bundle|install|package|build)\b""").containsMatchIn(norm) -> "Gradle build"
                 else -> "Gradle"
             }
         }
 
         if (Regex("""\bgit\s+""").containsMatchIn(norm)) {
             return when {
-                Regex("""\bgit\s+status\b""").containsMatchIn(norm) -> "Stato Git"
-                Regex("""\bgit\s+diff\b""").containsMatchIn(norm) -> "Diff Git"
-                Regex("""\bgit\s+log\b""").containsMatchIn(norm) -> "Log Git"
-                Regex("""\bgit\s+(pull|fetch)\b""").containsMatchIn(norm) -> "Aggiornamento da remoto"
-                Regex("""\bgit\s+push\b""").containsMatchIn(norm) -> "Invio su remoto"
-                Regex("""\bgit\s+(commit|add)\b""").containsMatchIn(norm) -> "Staging o commit"
+                Regex("""\bgit\s+status\b""").containsMatchIn(norm) -> "Git status"
+                Regex("""\bgit\s+diff\b""").containsMatchIn(norm) -> "Git diff"
+                Regex("""\bgit\s+log\b""").containsMatchIn(norm) -> "Git log"
+                Regex("""\bgit\s+(pull|fetch)\b""").containsMatchIn(norm) -> "Remote update"
+                Regex("""\bgit\s+push\b""").containsMatchIn(norm) -> "Remote push"
+                Regex("""\bgit\s+(commit|add)\b""").containsMatchIn(norm) -> "Staging or commit"
                 else -> "Git"
             }
         }
