@@ -1,10 +1,16 @@
 package com.remodex.mobile
 
 import android.content.Context
+import com.remodex.mobile.beta.BetaDeviceInfo
+import com.remodex.mobile.beta.BetaEngagementClient
+import com.remodex.mobile.beta.BetaEngagementRepository
+import com.remodex.mobile.beta.BetaTesterStore
+import com.remodex.mobile.beta.SharedPreferencesBetaKeyValueStore
 import com.remodex.mobile.core.persistence.AIChangeSetPersistence
 import com.remodex.mobile.core.persistence.CodexMessagePersistence
 import com.remodex.mobile.core.persistence.SessionPersistence
 import com.remodex.mobile.core.security.SecureStore
+import com.remodex.mobile.core.config.FeatureFlags
 import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.services.CodexService
 import java.util.concurrent.TimeUnit
@@ -53,6 +59,9 @@ object AppContainer {
     lateinit var codexRepository: CodexRepository
         private set
 
+    lateinit var betaEngagementRepository: BetaEngagementRepository
+        private set
+
     fun initialize(context: Context) {
         val app = context.applicationContext
         appContext = app
@@ -74,6 +83,25 @@ object AppContainer {
                 secureStore = secureStore,
                 sessionPersistence = sessionPersistence,
                 messagePersistence = messagePersistence,
+            )
+        val betaStore = BetaTesterStore(SharedPreferencesBetaKeyValueStore(app))
+        val betaApi =
+            if (FeatureFlags.betaEngagementEnabled) {
+                BetaEngagementClient(
+                    httpClient = httpClient,
+                    baseUrl = BuildConfig.BETA_API_BASE_URL,
+                    apiKey = BuildConfig.BETA_API_KEY,
+                )
+            } else {
+                null
+            }
+        betaEngagementRepository =
+            BetaEngagementRepository(
+                enabled = FeatureFlags.betaEngagementEnabled,
+                store = betaStore,
+                api = betaApi,
+                appVersionProvider = { BetaDeviceInfo.appVersionName(app) },
+                deviceModelProvider = { BetaDeviceInfo.coarseDeviceModel() },
             )
     }
 }

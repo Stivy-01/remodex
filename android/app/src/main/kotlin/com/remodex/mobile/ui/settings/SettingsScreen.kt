@@ -62,6 +62,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 import com.remodex.mobile.R
 import com.remodex.mobile.AppContainer
+import com.remodex.mobile.core.config.FeatureFlags
 import com.remodex.mobile.core.model.AppFontStyle
 import com.remodex.mobile.core.model.AppThemePreference
 import com.remodex.mobile.core.model.ContextWindowUsage
@@ -81,6 +82,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToAbout: () -> Unit,
     onNavigateToWhatsNew: () -> Unit,
+    onNavigateToTesterHq: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BackHandler(onBack = onNavigateBack)
@@ -237,6 +239,13 @@ fun SettingsScreen(
                 subtitle = stringResource(R.string.settings_whats_new_hint),
                 onClick = onNavigateToWhatsNew,
             )
+            if (FeatureFlags.betaEngagementEnabled) {
+                SettingsNavigationRow(
+                    title = stringResource(R.string.nav_tester_hq),
+                    subtitle = stringResource(R.string.settings_tester_hq_hint),
+                    onClick = onNavigateToTesterHq,
+                )
+            }
             Text(
                 text = stringResource(R.string.settings_about_version, versionName),
                 style = MaterialTheme.typography.bodyMedium,

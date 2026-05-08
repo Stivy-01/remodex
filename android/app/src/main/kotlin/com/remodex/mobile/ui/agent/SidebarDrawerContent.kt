@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.composables.icons.lucide.R as LucideR
 import com.remodex.mobile.R
+import com.remodex.mobile.core.config.FeatureFlags
 import com.remodex.mobile.core.transport.ConnectionState
 import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.ui.home.RootReconnectRecoveryAction
@@ -182,6 +183,22 @@ fun SidebarDrawerContent(
                         contentDescription = stringResource(R.string.nav_settings),
                         modifier = Modifier.size(20.dp),
                     )
+                }
+                if (FeatureFlags.betaEngagementEnabled) {
+                    IconButton(
+                        onClick = {
+                            drawerScope.launch {
+                                closeDrawer()
+                                navController.navigate(AppRoutes.TesterHq)
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(LucideR.drawable.lucide_ic_trophy),
+                            contentDescription = stringResource(R.string.nav_tester_hq),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
                 IconButton(
                     onClick = {

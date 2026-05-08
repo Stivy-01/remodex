@@ -7,4 +7,5 @@ object AppRoutes {
     const val Archived = "archived"
     const val About = "about"
     const val WhatsNew = "whats_new"
+    const val TesterHq = "tester_hq"
 }

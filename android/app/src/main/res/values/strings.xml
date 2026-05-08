@@ -16,6 +16,7 @@
     <string name="thread_list_empty">No threads yet. Connect the bridge, then refresh the list or start a chat on the desktop.</string>
     <string name="thread_list_truncated">+%1$d more…</string>
     <string name="nav_settings">Settings</string>
+    <string name="nav_tester_hq">Tester HQ</string>
     <string name="nav_reconnect">Reconnect</string>
     <string name="nav_reconnect_retry">Reconnect again</string>
     <string name="nav_reconnect_scan_new_qr">Scan new QR</string>
@@ -306,6 +307,7 @@
     <string name="nav_whats_new">What\'s new</string>
     <string name="settings_about_remodex_hint">Version, pairing, and local-first notes.</string>
     <string name="settings_whats_new_hint">Recent Android changes.</string>
+    <string name="settings_tester_hq_hint">Daily beta missions, feedback, and anonymous contribution score.</string>
     <string name="settings_notifications_hint">Local alerts only. Remodex uses them for completed runs and other attention-needed events while the app is backgrounded.</string>
     <string name="settings_notifications_run_completion_title">Run-completion attention</string>
     <string name="settings_notifications_status_enabled">Enabled by system settings</string>

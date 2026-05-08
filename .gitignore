@@ -25,6 +25,7 @@ CodexMobile/*
 *.p12
 *.key
 *.cer
+android/supabase/.temp/
 .cocoindex_code/
 upload-keystore.jks
 CodexMobile/BuildSupport/PrivateOverrides.xcconfig
