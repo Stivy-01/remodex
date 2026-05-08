@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -18,7 +19,6 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,12 +69,12 @@ fun SidebarThreadRow(
                     onClick = onSelect,
                     onLongClick = { onRenameRequest?.invoke() },
                 )
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(
-            modifier = Modifier.size(width = 7.dp, height = 20.dp),
+            modifier = Modifier.size(width = 8.dp, height = 20.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (selected || isRunning) {
@@ -134,14 +134,19 @@ fun SidebarThreadRow(
             }
             if (onRenameRequest != null || onDeleteLocalRequest != null) {
                 Box {
-                    IconButton(
-                        onClick = { menuExpanded = true },
-                        modifier = Modifier.size(32.dp),
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable { menuExpanded = true },
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.MoreVert,
                             contentDescription = stringResource(R.string.sidebar_thread_actions_cd),
                             tint = colors.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                     DropdownMenu(

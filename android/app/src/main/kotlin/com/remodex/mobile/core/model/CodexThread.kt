@@ -34,6 +34,13 @@ data class CodexThread(
         /** User-visible fallback when there is no name, title, or preview (parity [CodexThread.swift] `defaultDisplayTitle`). */
         const val DEFAULT_DISPLAY_TITLE = "New Thread"
 
+        private val windowsDrivePathRegex = Regex("^[A-Za-z]:[\\\\/].*")
+        private val adHocCodexCwdPatterns =
+            listOf(
+                Regex("/Documents/Codex/\\d{4}-\\d{2}-\\d{2}/"),
+                Regex("/\\.codex/sessions/"),
+            )
+
         fun fromJsonObject(obj: JsonObject): CodexThread {
             val id = obj.stringOrThrow("id")
             val name =
@@ -228,6 +235,8 @@ data class CodexThread(
             if (value == null) return null
             val trimmed = value.trim()
             if (trimmed.isEmpty()) return null
+            if (!isLikelyFilesystemPath(trimmed)) return null
+            if (isAdHocCodexCwd(trimmed)) return null
             if (trimmed == "/") return trimmed
             var normalized = trimmed.trimEnd('\\', '/')
             while ((normalized.endsWith("/") || normalized.endsWith("\\")) && normalized.length > 1) {
@@ -235,6 +244,16 @@ data class CodexThread(
             }
             return if (normalized.isEmpty()) "/" else normalized
         }
+
+        private fun isLikelyFilesystemPath(value: String): Boolean =
+            value == "/" ||
+                value.startsWith("/") ||
+                value.startsWith("~/") ||
+                windowsDrivePathRegex.matches(value) ||
+                value.startsWith("\\\\")
+
+        private fun isAdHocCodexCwd(cwd: String): Boolean =
+            adHocCodexCwdPatterns.any { it.containsMatchIn(cwd) }
 
         fun isGenericPlaceholderTitle(value: String?): Boolean {
             val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return false

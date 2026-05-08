@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -26,7 +28,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -61,10 +62,13 @@ import com.remodex.mobile.data.loadGitBranchesWithStatus
 import com.remodex.mobile.ui.shared.ThreadRenameDialog
 import kotlinx.coroutines.launch
 
+private const val SIDEBAR_THREADS_PER_GROUP = 5
+
 @Composable
 fun SidebarScreen(
     repository: CodexRepository,
     onOpenArchivedChats: () -> Unit = {},
+    onThreadSelected: suspend () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val threads by repository.threads.collectAsStateWithLifecycle()
@@ -97,14 +101,20 @@ fun SidebarScreen(
     var deleteLocalGroupBusy by remember { mutableStateOf(false) }
     var deleteLocalGroupError by remember { mutableStateOf<String?>(null) }
     var collapsedGroupIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var expandedGroupIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val filtered =
         remember(threads, query) {
             filterThreadsForSidebar(threads, query)
         }
     val groups =
-        remember(filtered) {
-            SidebarThreadGrouping.makeGroups(threads = filtered)
+        remember(filtered, expandedGroupIds, activeId) {
+            SidebarThreadGrouping.applyGroupLimit(
+                groups = SidebarThreadGrouping.makeGroups(threads = filtered),
+                limit = SIDEBAR_THREADS_PER_GROUP,
+                expandedGroupIds = expandedGroupIds,
+                pinnedThreadIds = listOfNotNull(activeId).toSet(),
+            )
         }
 
     fun startManagedWorktreeChat(
@@ -286,7 +296,7 @@ fun SidebarScreen(
                     )
                 }
                 items(
-                    items = if (group.id in collapsedGroupIds) emptyList() else group.threads,
+                    items = if (group.id in collapsedGroupIds) emptyList() else group.visibleThreads,
                     key = { it.id },
                 ) { thread ->
                     SidebarThreadRow(
@@ -296,7 +306,10 @@ fun SidebarScreen(
                             runningTurnByThread.containsKey(thread.id) ||
                                 protectedRunningFallback.contains(thread.id),
                         onSelect = {
-                            scope.launch { repository.setActiveThreadId(thread.id) }
+                            scope.launch {
+                                repository.setActiveThreadId(thread.id)
+                                onThreadSelected()
+                            }
                         },
                         onRenameRequest = {
                             renameTarget = thread
@@ -307,6 +320,25 @@ fun SidebarScreen(
                             deleteLocalError = null
                         },
                     )
+                }
+                if (group.id !in collapsedGroupIds &&
+                    (group.hiddenCount > 0 ||
+                        (group.id in expandedGroupIds && group.totalCount > SIDEBAR_THREADS_PER_GROUP))
+                ) {
+                    item(key = "more-${group.id}") {
+                        SidebarGroupShowMoreRow(
+                            expanded = group.id in expandedGroupIds,
+                            totalCount = group.totalCount,
+                            onClick = {
+                                expandedGroupIds =
+                                    if (group.id in expandedGroupIds) {
+                                        expandedGroupIds - group.id
+                                    } else {
+                                        expandedGroupIds + group.id
+                                    }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -642,7 +674,7 @@ private fun SidebarGroupHeaderRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(top = 10.dp, bottom = 2.dp),
+                .padding(top = 8.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -660,7 +692,7 @@ private fun SidebarGroupHeaderRow(
                         },
                     ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (canCollapse) {
                 Icon(
@@ -669,14 +701,9 @@ private fun SidebarGroupHeaderRow(
                         else Icons.Filled.KeyboardArrowDown,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             }
-            Icon(
-                imageVector = group.leadingIcon(),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             Text(
                 text = group.label,
                 style = MaterialTheme.typography.titleSmall,
@@ -686,10 +713,13 @@ private fun SidebarGroupHeaderRow(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             if (onNewChatInProject != null) {
-                IconButton(
-                    onClick = onNewChatInProject,
-                    enabled = !newChatBusy,
-                    modifier = Modifier.size(36.dp),
+                Box(
+                    modifier =
+                        Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .clickable(enabled = !newChatBusy, onClick = onNewChatInProject),
+                    contentAlignment = Alignment.Center,
                 ) {
                     if (newChatBusy) {
                         CircularProgressIndicator(
@@ -700,19 +730,25 @@ private fun SidebarGroupHeaderRow(
                         Icon(
                             imageVector = Icons.Filled.Add,
                             contentDescription = stringResource(R.string.sidebar_new_chat),
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                 }
             }
             if (hasActions) {
                 Box {
-                    IconButton(
-                        onClick = { showOverflow = true },
-                        modifier = Modifier.size(36.dp),
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .clickable { showOverflow = true },
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = stringResource(R.string.sidebar_thread_actions_cd),
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                     DropdownMenu(
@@ -762,9 +798,38 @@ private fun SidebarGroupHeaderRow(
     }
 }
 
+@Composable
+private fun SidebarGroupShowMoreRow(
+    expanded: Boolean,
+    totalCount: Int,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .clickable(onClick = onClick)
+                .padding(start = 32.dp, end = 10.dp, top = 5.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text =
+                if (expanded) {
+                    stringResource(R.string.sidebar_group_show_less)
+                } else {
+                    stringResource(R.string.sidebar_group_show_all, totalCount)
+                },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
 private fun SidebarThreadGroup.leadingIcon(): ImageVector =
     when (kind) {
         SidebarThreadGroupKind.Archived -> Icons.Outlined.Archive
+        SidebarThreadGroupKind.Chats -> Icons.Outlined.Cloud
         SidebarThreadGroupKind.Project -> {
             val t = threads.firstOrNull()
             when {

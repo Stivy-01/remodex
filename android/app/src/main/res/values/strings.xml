@@ -257,6 +257,8 @@
     <string name="sidebar_thread_actions_cd">Thread actions</string>
     <string name="sidebar_thread_rename">Rename</string>
     <string name="sidebar_thread_delete_local">Remove locally</string>
+    <string name="sidebar_group_show_all">Show all (%1$d)</string>
+    <string name="sidebar_group_show_less">Show less</string>
     <string name="sidebar_thread_delete_local_title">Remove local chat?</string>
     <string name="sidebar_thread_delete_local_message">Remove "%1$s" from this phone. The paired desktop runtime is not changed.</string>
     <string name="sidebar_thread_delete_local_confirm">Remove locally</string>
