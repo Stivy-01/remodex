@@ -63,16 +63,24 @@ fun WhatsNewScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             LocalInfoSection(
-                title = stringResource(R.string.whats_new_settings_title),
-                body = stringResource(R.string.whats_new_item_settings),
+                title = stringResource(R.string.whats_new_beta_title),
+                body = stringResource(R.string.whats_new_item_beta),
             )
             LocalInfoSection(
-                title = stringResource(R.string.whats_new_local_title),
-                body = stringResource(R.string.whats_new_item_local),
+                title = stringResource(R.string.whats_new_scroll_title),
+                body = stringResource(R.string.whats_new_item_scroll),
             )
             LocalInfoSection(
-                title = stringResource(R.string.whats_new_compact_title),
-                body = stringResource(R.string.whats_new_item_compact),
+                title = stringResource(R.string.whats_new_streaming_title),
+                body = stringResource(R.string.whats_new_item_streaming),
+            )
+            LocalInfoSection(
+                title = stringResource(R.string.whats_new_repo_title),
+                body = stringResource(R.string.whats_new_item_repo),
+            )
+            LocalInfoSection(
+                title = stringResource(R.string.whats_new_bridge_title),
+                body = stringResource(R.string.whats_new_item_bridge),
             )
         }
     }
