@@ -57,6 +57,29 @@ class MessageTimelineStoreTest {
         }
 
     @Test
+    fun completeAssistantMessage_keepsRepeatedNoIdCompletions() =
+        runTest {
+            val store = MessageTimelineStore()
+
+            store.completeAssistantMessage(
+                threadId = "thread-1",
+                turnId = null,
+                itemId = null,
+                text = "same answer",
+            )
+            store.completeAssistantMessage(
+                threadId = "thread-1",
+                turnId = null,
+                itemId = null,
+                text = "same answer",
+            )
+
+            val messages = store.messagesByThread.value["thread-1"].orEmpty()
+            assertEquals(2, messages.size)
+            assertEquals(listOf("same answer", "same answer"), messages.map { it.text })
+        }
+
+    @Test
     fun completeSystemItem_mergesStreamingReasoningRowWhenCompletionAddsItemId() =
         runTest {
             val store = MessageTimelineStore()
@@ -205,7 +228,6 @@ class MessageTimelineStoreTest {
             val messages =
                 store.messagesByThread.value["thread-1"]
                     .orEmpty()
-                    .sortedBy { it.orderIndex }
             assertEquals(2, messages.size)
             assertEquals(CodexMessageRole.user, messages[0].role)
             assertEquals(CodexMessageRole.system, messages[1].role)

@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +41,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -102,8 +106,6 @@ private const val TIMELINE_INITIAL_RENDER_TAIL = 48
 private const val TIMELINE_LOAD_EARLIER_PAGE = 80
 private const val TIMELINE_STAGING_THRESHOLD = 72
 private const val STARTUP_TRACE_TAG = "RemodexStartup"
-private const val SMART_SCROLL_CTA_SCROLLING_DWELL_MS = 1_000L
-private const val SMART_SCROLL_CTA_STOP_HIDE_DELAY_MS = 1_000L
 private const val SMART_SCROLL_FADE_JUMP_DISTANCE_ITEMS = 24
 /** Shaves a few dp off IME bottom padding so the composer sits slightly closer to the keyboard. */
 private val TurnConversationImeBottomTrim = 12.dp
@@ -167,6 +169,7 @@ fun TurnConversationPane(
     var showWorktreeHandoffSheet by remember(threadId) { mutableStateOf(false) }
     var forkingThread by remember(threadId) { mutableStateOf(false) }
     var showPlanDetailsSheet by remember(threadId) { mutableStateOf(false) }
+    var fullTimelineMessage by remember(threadId) { mutableStateOf<com.remodex.mobile.core.model.CodexMessage?>(null) }
     var reviewTargetName by rememberSaveable(threadId) { mutableStateOf<String?>(null) }
     var reviewBaseBranch by rememberSaveable(threadId) { mutableStateOf<String?>(null) }
     val voiceRecorder = remember(threadId) { BridgeVoiceRecorder() }
@@ -687,7 +690,7 @@ fun TurnConversationPane(
 
     val messages =
         remember(threadId, messagesByThread) {
-            messagesByThread[threadId].orEmpty().sortedWith(compareBy({ it.orderIndex }, { it.createdAt }))
+            messagesByThread[threadId].orEmpty()
         }
     LaunchedEffect(threadId, messages.size) {
         threadChangeSets =
@@ -728,6 +731,9 @@ fun TurnConversationPane(
         remember(messages) {
             selectPinnedPlanAccessoryMessage(messages)
         }
+    LaunchedEffect(pinnedPlanAccessoryMessage?.id) {
+        planAccessoryExpanded = false
+    }
     val fileAutocompleteCandidates =
         remember(messages) { com.remodex.mobile.ui.turn.extractThreadFileAutocompleteCandidates(messages) }
     val trailingToken =
@@ -812,16 +818,15 @@ fun TurnConversationPane(
     val listState = rememberLazyListState()
     val latestMessageId = visibleMessages.lastOrNull()?.id
     var lastAutoScrollThreadId by remember { mutableStateOf<String?>(null) }
-    var latestSeenAtBottomMessageId by rememberSaveable(threadId) { mutableStateOf(latestMessageId) }
-    var previousFirstVisibleItemIndex by remember(threadId) { mutableIntStateOf(0) }
-    var scrollDirection by remember(threadId) { mutableIntStateOf(0) }
-    var scrollDirectionWindowStartedAtMs by remember(threadId) { mutableStateOf(System.currentTimeMillis()) }
-    var scrollDirectionChangeCount by remember(threadId) { mutableIntStateOf(0) }
-    var showSmartScrollCtaForSustainedScroll by remember(threadId) { mutableStateOf(false) }
+    var shouldAutoFollowBottom by rememberSaveable(threadId) { mutableStateOf(true) }
     var timelineContentVisible by remember(threadId) { mutableStateOf(true) }
     val timelineContentAlpha by animateFloatAsState(
-        targetValue = if (timelineContentVisible) 1f else 0.08f,
+        targetValue = if (timelineContentVisible) 1f else 0.18f,
         label = "timeline-content-alpha",
+    )
+    val timelineBlurRadius by animateDpAsState(
+        targetValue = if (timelineContentVisible) 0.dp else 10.dp,
+        label = "timeline-content-blur",
     )
     val shouldFollowBottom by remember {
         derivedStateOf {
@@ -860,27 +865,18 @@ fun TurnConversationPane(
             lastVisibleListItemIndex,
             chatAnchors,
             shouldFollowBottom,
-            latestSeenAtBottomMessageId,
             latestMessageId,
-            scrollDirectionChangeCount,
         ) {
             buildSmartScrollNavigationState(
                 totalItemsCount = totalListItemCount,
                 firstVisibleItemIndex = firstVisibleListItemIndex,
                 lastVisibleItemIndex = lastVisibleListItemIndex,
                 anchors = chatAnchors,
-                isNearTop = firstVisibleListItemIndex <= timelineListItemOffset + 1,
                 isNearBottom = shouldFollowBottom,
-                hasNewMessagesBelow =
-                    latestMessageId != null &&
-                        latestSeenAtBottomMessageId != latestMessageId &&
-                        !shouldFollowBottom,
-                directionChangeCount = scrollDirectionChangeCount,
             )
-        }
+    }
     LaunchedEffect(threadId) {
         lastAutoScrollThreadId = threadId
-        latestSeenAtBottomMessageId = latestMessageId
         if (visibleMessages.isNotEmpty()) {
             listState.scrollToItem(visibleMessages.lastIndex)
             if (BuildConfig.DEBUG) {
@@ -892,52 +888,22 @@ fun TurnConversationPane(
         }
     }
     LaunchedEffect(threadId, listState) {
-        previousFirstVisibleItemIndex = listState.firstVisibleItemIndex
-        snapshotFlow { listState.firstVisibleItemIndex }
+        snapshotFlow { shouldFollowBottom to listState.isScrollInProgress }
             .distinctUntilChanged()
-            .collect { firstVisible ->
-                val now = System.currentTimeMillis()
-                if (now - scrollDirectionWindowStartedAtMs > 10_000L) {
-                    scrollDirectionWindowStartedAtMs = now
-                    scrollDirectionChangeCount = 0
-                }
-                val nextDirection =
-                    when {
-                        firstVisible > previousFirstVisibleItemIndex -> 1
-                        firstVisible < previousFirstVisibleItemIndex -> -1
-                        else -> scrollDirection
-                    }
-                if (nextDirection != 0 && scrollDirection != 0 && nextDirection != scrollDirection) {
-                    scrollDirectionChangeCount++
-                }
-                if (nextDirection != 0) {
-                    scrollDirection = nextDirection
-                }
-                previousFirstVisibleItemIndex = firstVisible
-            }
-    }
-    LaunchedEffect(threadId, listState) {
-        showSmartScrollCtaForSustainedScroll = false
-        snapshotFlow { listState.isScrollInProgress }
-            .distinctUntilChanged()
-            .collect { isScrolling ->
+            .collect { (isAtBottom, isScrolling) ->
                 if (isScrolling) {
-                    delay(SMART_SCROLL_CTA_SCROLLING_DWELL_MS)
-                    showSmartScrollCtaForSustainedScroll = listState.isScrollInProgress
-                } else {
-                    delay(SMART_SCROLL_CTA_STOP_HIDE_DELAY_MS)
-                    showSmartScrollCtaForSustainedScroll = listState.isScrollInProgress
+                    shouldAutoFollowBottom = isAtBottom
                 }
             }
     }
     LaunchedEffect(latestMessageId, shouldFollowBottom) {
         if (shouldFollowBottom) {
-            latestSeenAtBottomMessageId = latestMessageId
+            shouldAutoFollowBottom = true
         }
     }
-    LaunchedEffect(latestMessageId, visibleMessages.size, shouldFollowBottom) {
-        if (visibleMessages.isNotEmpty() && shouldFollowBottom && lastAutoScrollThreadId == threadId) {
-            listState.scrollToItem(visibleMessages.lastIndex)
+    LaunchedEffect(latestMessageId, visibleMessages.size, shouldAutoFollowBottom) {
+        if (visibleMessages.isNotEmpty() && shouldAutoFollowBottom && lastAutoScrollThreadId == threadId) {
+            listState.animateScrollToItem(visibleMessages.lastIndex)
             if (BuildConfig.DEBUG) {
                 Log.d(
                     STARTUP_TRACE_TAG,
@@ -1160,6 +1126,7 @@ fun TurnConversationPane(
                 messages = visibleMessages,
                 listState = listState,
                 commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
+                onOpenFullMessage = { fullTimelineMessage = it },
                 hiddenEarlierCount = hiddenEarlierCount,
                 canLoadOlderRemoteHistory = canLoadOlderRemoteHistory,
                 isLoadingOlderHistory = isLoadingOlderHistory,
@@ -1259,15 +1226,11 @@ fun TurnConversationPane(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .blur(timelineBlurRadius)
                         .alpha(timelineContentAlpha),
             )
             SmartScrollNavigationCta(
-                state =
-                    if (showSmartScrollCtaForSustainedScroll) {
-                        smartScrollNavigationState
-                    } else {
-                        SmartScrollNavigationState()
-                    },
+                state = smartScrollNavigationState,
                 onNavigate = { requestedIndex ->
                     val targetIndex =
                         requestedIndex.coerceIn(
@@ -1283,10 +1246,12 @@ fun TurnConversationPane(
                             delay(120L)
                             timelineContentVisible = true
                         } else {
-                            listState.animateScrollToItemRelaxed(targetIndex)
+                            listState.animateScrollToItem(targetIndex)
                         }
                         if (targetIndex >= (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) {
-                            latestSeenAtBottomMessageId = latestMessageId
+                            shouldAutoFollowBottom = true
+                        } else {
+                            shouldAutoFollowBottom = false
                         }
                     }
                 },
@@ -1914,6 +1879,45 @@ fun TurnConversationPane(
             }
         },
     )
+    FullTimelineMessageSheet(
+        message = fullTimelineMessage,
+        onDismiss = { fullTimelineMessage = null },
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun FullTimelineMessageSheet(
+    message: com.remodex.mobile.core.model.CodexMessage?,
+    onDismiss: () -> Unit,
+) {
+    if (message == null) return
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.turn_message_full_sheet_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            TurnRichMarkdownBody(
+                markdown = message.text.trim(),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth(),
+                keyPrefix = "full-${message.id}",
+            )
+        }
+    }
 }
 
 private fun assistantUndoChangeSetsByMessageId(

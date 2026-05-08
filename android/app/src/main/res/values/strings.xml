@@ -36,6 +36,7 @@
     <string name="turn_timeline_kind_command">Command</string>
     <string name="turn_timeline_group_executed_commands">Comandi eseguiti</string>
     <string name="turn_timeline_group_modified_files">File modificati</string>
+    <string name="turn_timeline_group_work_details">Activity details</string>
     <string name="turn_timeline_group_toggle_expand_cd">Mostra %1$d elementi</string>
     <string name="turn_timeline_group_toggle_collapse_cd">Nascondi gruppo</string>
     <string name="turn_timeline_kind_plan">Plan</string>
@@ -121,6 +122,8 @@
     <string name="turn_message_action_undo_applying">Undoing…</string>
     <string name="turn_message_action_undo_failed">Could not undo this response.</string>
     <string name="turn_message_action_undo_failed_title">Undo failed</string>
+    <string name="turn_message_see_more">See more</string>
+    <string name="turn_message_full_sheet_title">Full message</string>
     <string name="turn_fork_sheet_title">Fork current thread</string>
     <string name="turn_fork_sheet_message">Create a fork of this conversation and switch to it.</string>
     <string name="turn_fork_sheet_project_path">Project: %1$s</string>
@@ -225,6 +228,7 @@
     <string name="turn_plan_apply_requires_empty">Use plan is available only when composer is empty.</string>
     <string name="turn_plan_open_sheet">Sheet</string>
     <string name="turn_plan_sheet_title">Plan details</string>
+    <string name="turn_plan_more_steps">+%1$d more steps</string>
     <string name="turn_plan_sheet_progress">Progress: %1$s</string>
     <string name="turn_plan_step_todo">todo</string>
     <string name="turn_plan_step_doing">doing</string>

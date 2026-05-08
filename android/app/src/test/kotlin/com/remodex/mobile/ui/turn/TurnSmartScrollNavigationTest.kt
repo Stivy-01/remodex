@@ -18,14 +18,14 @@ class TurnSmartScrollNavigationTest {
                 firstVisibleItemIndex = 1,
                 lastVisibleItemIndex = 2,
                 anchors = anchors(5),
-                isNearTop = false,
                 isNearBottom = false,
-                hasNewMessagesBelow = false,
-                directionChangeCount = 0,
             )
 
-        assertEquals(listOf(SMART_SCROLL_LABEL_JUMP_LATEST), state.actions.map { it.label })
-        assertEquals(4, state.actions.single().targetIndex)
+        assertEquals(
+            listOf(SMART_SCROLL_LABEL_PREV_USER, SMART_SCROLL_LABEL_NEXT_USER, SMART_SCROLL_LABEL_LATEST),
+            state.actions.map { it.label },
+        )
+        assertEquals(listOf(0, 3, 4), state.actions.map { it.targetIndex })
     }
 
     @Test
@@ -36,14 +36,11 @@ class TurnSmartScrollNavigationTest {
                 firstVisibleItemIndex = 8,
                 lastVisibleItemIndex = 9,
                 anchors = anchors(18),
-                isNearTop = false,
                 isNearBottom = false,
-                hasNewMessagesBelow = true,
-                directionChangeCount = 0,
             )
 
         assertEquals(
-            listOf(SMART_SCROLL_LABEL_PREV, SMART_SCROLL_LABEL_NEXT, SMART_SCROLL_LABEL_NEW_OUTPUT),
+            listOf(SMART_SCROLL_LABEL_PREV_USER, SMART_SCROLL_LABEL_NEXT_USER, SMART_SCROLL_LABEL_LATEST),
             state.actions.map { it.label },
         )
     }
@@ -56,14 +53,28 @@ class TurnSmartScrollNavigationTest {
                 firstVisibleItemIndex = 4,
                 lastVisibleItemIndex = 5,
                 anchors = anchors(6),
-                isNearTop = false,
                 isNearBottom = true,
-                hasNewMessagesBelow = false,
-                directionChangeCount = 0,
         )
 
-        assertEquals(listOf(SMART_SCROLL_LABEL_PREVIOUS_MESSAGE), state.actions.map { it.label })
+        assertEquals(listOf(SMART_SCROLL_LABEL_PREV_USER), state.actions.map { it.label })
         assertEquals(3, state.actions.single().targetIndex)
+    }
+
+    @Test
+    fun middleSessionDoesNotReplaceAnchorsWithLostCta() {
+        val state =
+            buildSmartScrollNavigationState(
+                totalItemsCount = 18,
+                firstVisibleItemIndex = 8,
+                lastVisibleItemIndex = 9,
+                anchors = anchors(18),
+                isNearBottom = false,
+            )
+
+        assertEquals(
+            listOf(SMART_SCROLL_LABEL_PREV_USER, SMART_SCROLL_LABEL_NEXT_USER, SMART_SCROLL_LABEL_LATEST),
+            state.actions.map { it.label },
+        )
     }
 
     @Test

@@ -11,8 +11,9 @@ import com.remodex.mobile.ui.turn.TurnMessageRow
 fun UserMessageBubble(
     message: CodexMessage,
     modifier: Modifier = Modifier,
+    onOpenFullMessage: ((CodexMessage) -> Unit)? = null,
 ) {
     if (message.role == CodexMessageRole.user) {
-        TurnMessageRow(message = message, modifier = modifier)
+        TurnMessageRow(message = message, modifier = modifier, onOpenFullMessage = onOpenFullMessage)
     }
 }

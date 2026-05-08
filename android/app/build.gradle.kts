@@ -97,6 +97,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.4")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.composables:icons-lucide-android:2.2.1")
+    implementation("com.valentinilk.shimmer:compose-shimmer:1.4.0")
     implementation("io.coil-kt.coil3:coil-compose:3.0.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.0")
 

@@ -1,11 +1,5 @@
 package com.remodex.mobile.ui.turn
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +9,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,10 +19,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.valentinilk.shimmer.shimmer
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexMessageDeliveryState
@@ -49,6 +44,7 @@ fun TurnMessageRow(
     message: CodexMessage,
     modifier: Modifier = Modifier,
     commandExecutionDetails: CommandExecutionDetails? = null,
+    onOpenFullMessage: ((CodexMessage) -> Unit)? = null,
 ) {
     val isTimelineToolRow =
         message.role == CodexMessageRole.system &&
@@ -176,11 +172,10 @@ fun TurnMessageRow(
                         markdown = bodyMarkdown,
                         isStreaming = isStreamingAssistantChat,
                     )
-                val displayedBodyMarkdown =
-                    if (isStreamingAssistantChat && revealedBodyMarkdown.isEmpty()) {
-                        stringResource(R.string.turn_message_streaming_placeholder)
-                    } else {
-                        revealedBodyMarkdown
+                val displayedBodyMarkdown = revealedBodyMarkdown
+                val cappedBody =
+                    remember(message.id, message.role, message.kind, displayedBodyMarkdown) {
+                        capTimelineBody(message, displayedBodyMarkdown)
                     }
                 val streamingModifier =
                     Modifier
@@ -225,16 +220,17 @@ fun TurnMessageRow(
                         )
                     }
                     else -> {
-                        if (displayedBodyMarkdown.isNotEmpty()) {
+                        if (cappedBody.text.isNotEmpty()) {
                             if (shouldRenderMarkdownBody(message)) {
                                 TurnRichMarkdownBody(
-                                    markdown = displayedBodyMarkdown,
+                                    markdown = cappedBody.text,
                                     contentColor = onBubble,
                                     modifier = streamingModifier,
+                                    keyPrefix = message.id,
                                 )
                             } else {
                                 Text(
-                                    text = displayedBodyMarkdown,
+                                    text = cappedBody.text,
                                     style =
                                         if (message.role == CodexMessageRole.system && message.kind == CodexMessageKind.thinking) {
                                             MaterialTheme.typography.bodySmall
@@ -244,6 +240,11 @@ fun TurnMessageRow(
                                     color = onBubble,
                                     modifier = streamingModifier,
                                 )
+                            }
+                            if (cappedBody.truncated && onOpenFullMessage != null) {
+                                TextButton(onClick = { onOpenFullMessage(message) }) {
+                                    Text(stringResource(R.string.turn_message_see_more))
+                                }
                             }
                         }
                     }
@@ -298,6 +299,9 @@ private fun rememberStreamingAssistantMarkdown(
     markdown: String,
     isStreaming: Boolean,
 ): String {
+    if (isStreaming && markdown.length > STREAMING_ASSISTANT_REVEAL_DISABLE_CHARS) {
+        return markdown
+    }
     var displayed by remember(messageId) { mutableStateOf(if (isStreaming) "" else markdown) }
     val latestMarkdown by rememberUpdatedState(markdown)
 
@@ -307,7 +311,7 @@ private fun rememberStreamingAssistantMarkdown(
             return@LaunchedEffect
         }
 
-        if (displayed.isEmpty()) {
+        if (displayed.isEmpty() && STREAMING_ASSISTANT_INITIAL_DELAY_MS > 0L) {
             delay(STREAMING_ASSISTANT_INITIAL_DELAY_MS)
         }
 
@@ -343,23 +347,59 @@ private fun streamingRevealStep(remaining: Int): Int =
 
 @Composable
 private fun Modifier.streamingAssistantShimmer(enabled: Boolean): Modifier {
-    if (!enabled) return this
-    val transition = rememberInfiniteTransition(label = "assistant-stream-shimmer")
-    val alpha by transition.animateFloat(
-        initialValue = 0.86f,
-        targetValue = 1f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        label = "assistant-stream-alpha",
-    )
-    return this.graphicsLayer { this.alpha = alpha }
+    return if (enabled) this.shimmer() else this
 }
 
-private const val STREAMING_ASSISTANT_INITIAL_DELAY_MS = 400L
-private const val STREAMING_ASSISTANT_REVEAL_FRAME_MS = 42L
+private const val STREAMING_ASSISTANT_INITIAL_DELAY_MS = 80L
+private const val STREAMING_ASSISTANT_REVEAL_FRAME_MS = 34L
+private const val STREAMING_ASSISTANT_REVEAL_DISABLE_CHARS = 1_800
+private const val USER_MESSAGE_INLINE_MAX_CHARS = 1_200
+private const val USER_MESSAGE_INLINE_MAX_LINES = 12
+private const val ASSISTANT_MESSAGE_INLINE_MAX_LINES = 18
+private const val PLAN_MESSAGE_INLINE_MAX_CHARS = 1_200
+private const val PLAN_MESSAGE_INLINE_MAX_LINES = 12
+private const val PLAN_MESSAGE_MAX_VISIBLE_STEPS = 4
+
+private data class CappedTimelineBody(
+    val text: String,
+    val truncated: Boolean,
+)
+
+private fun capTimelineBody(
+    message: CodexMessage,
+    text: String,
+): CappedTimelineBody {
+    val (maxChars, maxLines) =
+        when {
+            message.role == CodexMessageRole.user && message.kind == CodexMessageKind.chat ->
+                USER_MESSAGE_INLINE_MAX_CHARS to USER_MESSAGE_INLINE_MAX_LINES
+            message.role == CodexMessageRole.assistant && message.kind == CodexMessageKind.chat ->
+                Int.MAX_VALUE to ASSISTANT_MESSAGE_INLINE_MAX_LINES
+            message.kind == CodexMessageKind.plan ->
+                PLAN_MESSAGE_INLINE_MAX_CHARS to PLAN_MESSAGE_INLINE_MAX_LINES
+            else -> return CappedTimelineBody(text = text, truncated = false)
+        }
+    return capTextForTimeline(text, maxChars = maxChars, maxLines = maxLines)
+}
+
+private fun capTextForTimeline(
+    text: String,
+    maxChars: Int,
+    maxLines: Int,
+): CappedTimelineBody {
+    if (text.isBlank()) return CappedTimelineBody(text = text, truncated = false)
+    val lineCount = text.count { it == '\n' } + 1
+    val shouldTruncate = text.length > maxChars || lineCount > maxLines
+    if (!shouldTruncate) return CappedTimelineBody(text = text, truncated = false)
+    val byLines = text.lineSequence().take(maxLines).joinToString("\n")
+    val clipped =
+        if (byLines.length > maxChars) {
+            byLines.take(maxChars)
+        } else {
+            byLines
+        }
+    return CappedTimelineBody(text = clipped.trimEnd() + "\n...", truncated = true)
+}
 
 @Composable
 private fun PlanMessageDetails(
@@ -380,7 +420,8 @@ private fun PlanMessageDetails(
                 color = contentColor.copy(alpha = 0.82f),
             )
         }
-        message.planState?.steps?.forEachIndexed { index, step ->
+        val steps = message.planState?.steps.orEmpty()
+        steps.take(PLAN_MESSAGE_MAX_VISIBLE_STEPS).forEachIndexed { index, step ->
             val statusPrefix =
                 when (step.status) {
                     com.remodex.mobile.core.model.CodexPlanStepStatus.completed -> "[done]"
@@ -391,6 +432,14 @@ private fun PlanMessageDetails(
                 text = "${index + 1}. $statusPrefix ${step.step}",
                 style = MaterialTheme.typography.bodySmall,
                 color = contentColor.copy(alpha = 0.9f),
+            )
+        }
+        val hiddenStepCount = steps.size - PLAN_MESSAGE_MAX_VISIBLE_STEPS
+        if (hiddenStepCount > 0) {
+            Text(
+                text = stringResource(R.string.turn_plan_more_steps, hiddenStepCount),
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor.copy(alpha = 0.72f),
             )
         }
     }

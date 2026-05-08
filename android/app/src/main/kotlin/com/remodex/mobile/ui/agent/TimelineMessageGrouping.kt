@@ -3,7 +3,6 @@ package com.remodex.mobile.ui.agent
 import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexMessageKind
 import com.remodex.mobile.core.model.CodexMessageRole
-import java.time.Duration
 
 /** More than this many identical tool rows in a row → one collapsible group. */
 internal const val TIMELINE_TOOL_GROUP_THRESHOLD = 3
@@ -35,7 +34,6 @@ internal sealed interface TimelineListItem {
     data class AssistantWorkGroup(
         val groupKey: String,
         val messages: List<CodexMessage>,
-        val duration: Duration?,
     ) : TimelineListItem {
         init {
             require(messages.isNotEmpty())
@@ -220,18 +218,10 @@ private fun List<TimelineListItem>.collapseAssistantWorkGroups(excludedTurnId: S
             if (hiddenItems.isEmpty()) return@forEach
             hiddenIndexes += hiddenItems.map { it.index }
             val workMessages = hiddenItems.flatMap { it.messages }
-            val first = workMessages.minByOrNull { it.createdAt }
-            val duration =
-                if (first != null && finalAssistantMessage.createdAt >= first.createdAt) {
-                    Duration.between(first.createdAt, finalAssistantMessage.createdAt)
-                } else {
-                    null
-                }
             workGroupsByInsertIndex[hiddenItems.first().index] =
                 TimelineListItem.AssistantWorkGroup(
-                    groupKey = hiddenItems.first().item.stableKey,
+                    groupKey = "assistant-work-${itemsForTurn.first().turnId}",
                     messages = workMessages,
-                    duration = duration,
                 )
         }
     if (hiddenIndexes.isEmpty()) return this
