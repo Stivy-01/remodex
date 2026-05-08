@@ -148,6 +148,85 @@ Response:
 }
 ```
 
+## POST `/beta/mission-event`
+
+Request:
+
+```json
+{
+  "tester_id": "00000000-0000-0000-0000-000000000000",
+  "event_type": "qr_pairing_completed",
+  "app_version": "0.1.1",
+  "device_model": "Google Pixel 8",
+  "screen": "qr_pairing"
+}
+```
+
+Behavior:
+
+- Ensures tester exists.
+- Validates `event_type` against the server allowlist.
+- Maps the event to an active mission ID for the current build.
+- Reads points from `beta_missions.points`.
+- Inserts one deduped `beta_events` row.
+- Does not accept arbitrary point values from Android.
+
+Response:
+
+```json
+{
+  "success": true,
+  "event_type": "qr_pairing_completed",
+  "mission_id": "0.1.1-qr-pairing",
+  "points_awarded": 40,
+  "total_score": 120,
+  "message": "Mission completed."
+}
+```
+
+Supported event types:
+
+```text
+main_flow_completed
+message_sent
+qr_pairing_completed
+reconnect_completed
+leaderboard_refreshed
+branch_selector_opened
+session_recovered_from_background
+streaming_response_seen
+scroll_long_thread_checked
+markdown_rendering_checked
+file_change_card_checked
+command_card_checked
+queued_draft_used
+composer_basic_used
+composer_mentions_used
+composer_runtime_controls_used
+plan_mode_used
+voice_input_used
+image_attachment_sent
+file_attachment_sent
+git_status_checked
+git_diff_stage_checked
+new_worktree_chat_started
+worktree_handoff_completed
+review_flow_started
+fork_thread_completed
+settings_tester_hq_entry_opened
+settings_whats_new_opened
+notifications_checked
+usage_status_checked
+about_screen_opened
+sidebar_thread_opened
+sidebar_search_used
+new_chat_started
+archived_chats_opened
+design_mode_opened
+design_preview_checked
+design_export_opened
+```
+
 Behavior:
 
 - Ensure tester exists.

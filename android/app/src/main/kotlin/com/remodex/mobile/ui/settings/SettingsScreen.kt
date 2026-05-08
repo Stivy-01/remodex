@@ -87,6 +87,7 @@ fun SettingsScreen(
 ) {
     BackHandler(onBack = onNavigateBack)
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val conn by repository.connectionState.collectAsStateWithLifecycle()
     var fontStyle by remember { mutableStateOf(AppFontPreferences.readFontStyle(context)) }
     var themePreference by remember { mutableStateOf(ThemePreferences.read(context)) }
@@ -232,18 +233,42 @@ fun SettingsScreen(
             SettingsNavigationRow(
                 title = stringResource(R.string.nav_about_remodex),
                 subtitle = stringResource(R.string.settings_about_remodex_hint),
-                onClick = onNavigateToAbout,
+                onClick = {
+                    scope.launch {
+                        AppContainer.betaEngagementRepository.recordMissionEvent(
+                            eventType = "about_screen_opened",
+                            screen = "settings",
+                        )
+                    }
+                    onNavigateToAbout()
+                },
             )
             SettingsNavigationRow(
                 title = stringResource(R.string.nav_whats_new),
                 subtitle = stringResource(R.string.settings_whats_new_hint),
-                onClick = onNavigateToWhatsNew,
+                onClick = {
+                    scope.launch {
+                        AppContainer.betaEngagementRepository.recordMissionEvent(
+                            eventType = "settings_whats_new_opened",
+                            screen = "settings",
+                        )
+                    }
+                    onNavigateToWhatsNew()
+                },
             )
             if (FeatureFlags.betaEngagementEnabled) {
                 SettingsNavigationRow(
                     title = stringResource(R.string.nav_tester_hq),
                     subtitle = stringResource(R.string.settings_tester_hq_hint),
-                    onClick = onNavigateToTesterHq,
+                    onClick = {
+                        scope.launch {
+                            AppContainer.betaEngagementRepository.recordMissionEvent(
+                                eventType = "settings_tester_hq_entry_opened",
+                                screen = "settings",
+                            )
+                        }
+                        onNavigateToTesterHq()
+                    },
                 )
             }
             Text(

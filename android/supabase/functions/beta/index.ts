@@ -32,6 +32,51 @@ const POINTS = {
   feedbackSent: 40,
 };
 
+const MISSION_EVENTS: Record<string, { suffixes: string[]; screen?: string; oncePerDay?: boolean }> = {
+  main_flow_completed: { suffixes: ["test-main-flow", "main-flow", "send-message"], screen: "conversation" },
+  message_sent: { suffixes: ["send-message", "test-main-flow"], screen: "conversation" },
+  qr_pairing_completed: { suffixes: ["qr-pairing"], screen: "qr_pairing" },
+  reconnect_completed: { suffixes: ["reconnect"], screen: "connection" },
+  leaderboard_refreshed: { suffixes: ["leaderboard-refresh"], screen: "tester_hq" },
+  branch_selector_opened: { suffixes: ["branch-selector"], screen: "branch_selector" },
+  session_recovered_from_background: {
+    suffixes: ["background-foreground-session", "session-recovery"],
+    screen: "conversation",
+    oncePerDay: true,
+  },
+  streaming_response_seen: { suffixes: ["streaming-response"], screen: "conversation" },
+  scroll_long_thread_checked: { suffixes: ["scroll-long-thread"], screen: "conversation" },
+  markdown_rendering_checked: { suffixes: ["markdown-rendering"], screen: "conversation" },
+  file_change_card_checked: { suffixes: ["file-change-card"], screen: "conversation" },
+  command_card_checked: { suffixes: ["command-card"], screen: "conversation" },
+  queued_draft_used: { suffixes: ["queued-draft"], screen: "composer" },
+  composer_basic_used: { suffixes: ["composer-basic"], screen: "composer" },
+  composer_mentions_used: { suffixes: ["composer-mentions"], screen: "composer" },
+  composer_runtime_controls_used: { suffixes: ["composer-runtime-controls"], screen: "composer" },
+  plan_mode_used: { suffixes: ["plan-mode"], screen: "composer" },
+  voice_input_used: { suffixes: ["voice-input"], screen: "composer" },
+  image_attachment_sent: { suffixes: ["image-attachment"], screen: "composer" },
+  file_attachment_sent: { suffixes: ["file-attachment"], screen: "composer" },
+  git_status_checked: { suffixes: ["git-status"], screen: "git" },
+  git_diff_stage_checked: { suffixes: ["git-diff-stage"], screen: "git" },
+  new_worktree_chat_started: { suffixes: ["new-worktree-chat"], screen: "worktree" },
+  worktree_handoff_completed: { suffixes: ["worktree-handoff"], screen: "worktree" },
+  review_flow_started: { suffixes: ["review-flow"], screen: "review" },
+  fork_thread_completed: { suffixes: ["fork-thread"], screen: "thread" },
+  settings_tester_hq_entry_opened: { suffixes: ["settings-tester-hq-entry"], screen: "settings" },
+  settings_whats_new_opened: { suffixes: ["settings-whats-new"], screen: "settings" },
+  notifications_checked: { suffixes: ["notifications"], screen: "settings" },
+  usage_status_checked: { suffixes: ["usage-status"], screen: "usage" },
+  about_screen_opened: { suffixes: ["about-screen"], screen: "settings" },
+  sidebar_thread_opened: { suffixes: ["sidebar-open-thread"], screen: "sidebar" },
+  sidebar_search_used: { suffixes: ["sidebar-search"], screen: "sidebar" },
+  new_chat_started: { suffixes: ["new-chat"], screen: "sidebar" },
+  archived_chats_opened: { suffixes: ["archive-thread"], screen: "sidebar" },
+  design_mode_opened: { suffixes: ["design-mode-open"], screen: "design" },
+  design_preview_checked: { suffixes: ["design-preview"], screen: "design" },
+  design_export_opened: { suffixes: ["design-export"], screen: "design" },
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -52,6 +97,9 @@ Deno.serve(async (req) => {
     }
     if (req.method === "POST" && action === "feedback") {
       return json(await feedback(req));
+    }
+    if (req.method === "POST" && action === "mission-event") {
+      return json(await missionEvent(req));
     }
     if (req.method === "GET" && action === "leaderboard") {
       return json(await leaderboard(url));
@@ -189,6 +237,53 @@ async function feedback(req: Request) {
   };
 }
 
+async function missionEvent(req: Request) {
+  const body = await readJson(req);
+  const testerId = requireUuid(body.tester_id, "tester_id");
+  const appVersion = stringOrEmpty(body.app_version);
+  const eventType = requireMissionEventType(body.event_type);
+  const deviceModel = stringOrNull(body.device_model);
+  const screen = stringOrNull(body.screen) ?? MISSION_EVENTS[eventType].screen ?? null;
+
+  await ensureTester(testerId);
+
+  const mission = await firstActiveMission(appVersion, MISSION_EVENTS[eventType].suffixes);
+  if (!mission) {
+    return {
+      success: false,
+      event_type: eventType,
+      mission_id: null,
+      points_awarded: 0,
+      total_score: (await profile(testerId)).total_score,
+      message: "No active mission matches this event for the current build.",
+    };
+  }
+
+  const today = utcDateKey(new Date());
+  const dedupeKey = MISSION_EVENTS[eventType].oncePerDay
+    ? `${eventType}:${today}`
+    : `${eventType}:${appVersion}`;
+  const awarded = await awardEvent({
+    tester_id: testerId,
+    event_type: eventType,
+    points: mission.points ?? 0,
+    app_version: appVersion,
+    screen,
+    mission_id: mission.id,
+    device_model: deviceModel,
+    dedupe_key: dedupeKey,
+  });
+  const p = await profile(testerId);
+  return {
+    success: true,
+    event_type: eventType,
+    mission_id: mission.id,
+    points_awarded: awarded ? mission.points ?? 0 : 0,
+    total_score: p.total_score,
+    message: awarded ? "Mission completed." : "Mission was already completed.",
+  };
+}
+
 async function leaderboard(url: URL) {
   const testerId = requireUuid(
     url.searchParams.get("testerId") ?? url.searchParams.get("tester_id"),
@@ -301,16 +396,32 @@ async function firstActiveMissionId(
   appVersion: string,
   preferredIds: string[],
 ): Promise<string | null> {
+  return (await firstActiveMissionByIds(appVersion, preferredIds))?.id ?? null;
+}
+
+async function firstActiveMission(
+  appVersion: string,
+  suffixes: string[],
+): Promise<{ id: string; points: number } | null> {
+  if (!appVersion) return null;
+  return firstActiveMissionByIds(appVersion, suffixes.map((suffix) => `${appVersion}-${suffix}`));
+}
+
+async function firstActiveMissionByIds(
+  appVersion: string,
+  preferredIds: string[],
+): Promise<{ id: string; points: number } | null> {
   if (!appVersion) return null;
   const result = await assertOk(
     supabase.from("beta_missions")
-      .select("id")
+      .select("id,points")
       .eq("app_version", appVersion)
       .eq("active", true)
       .in("id", preferredIds)
       .limit(1),
   );
-  return result.data?.[0]?.id ?? null;
+  const row = result.data?.[0];
+  return row ? { id: row.id, points: row.points ?? 0 } : null;
 }
 
 async function profile(testerId: string) {
@@ -478,6 +589,14 @@ function requireFeedbackType(value: unknown): string {
   ]);
   if (!allowed.has(text)) {
     throw new HttpError(400, "type is invalid");
+  }
+  return text;
+}
+
+function requireMissionEventType(value: unknown): string {
+  const text = stringOrEmpty(value);
+  if (!Object.prototype.hasOwnProperty.call(MISSION_EVENTS, text)) {
+    throw new HttpError(400, "event_type is invalid");
   }
   return text;
 }

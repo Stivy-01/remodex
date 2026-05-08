@@ -74,6 +74,7 @@ internal fun TurnGitBranchAccessory(
     onRefreshBranches: () -> Unit,
     onCheckoutBranch: (String) -> Unit,
     onCreateBranch: (String) -> Unit,
+    onOpenBranchSelector: () -> Unit = {},
     compact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -181,7 +182,10 @@ internal fun TurnGitBranchAccessory(
                     summary = state.summary,
                     branchPickerEnabled = branchPickerEnabled,
                     isSwitchingBranch = isSwitchingBranch,
-                    onOpenPicker = { sheetOpen = true },
+                    onOpenPicker = {
+                        onOpenBranchSelector()
+                        sheetOpen = true
+                    },
                     modifier = modifier,
                 )
             } else {
@@ -189,7 +193,10 @@ internal fun TurnGitBranchAccessory(
                     summary = state.summary,
                     branchPickerEnabled = branchPickerEnabled,
                     isSwitchingBranch = isSwitchingBranch,
-                    onOpenPicker = { sheetOpen = true },
+                    onOpenPicker = {
+                        onOpenBranchSelector()
+                        sheetOpen = true
+                    },
                     modifier = modifier,
                 )
             }

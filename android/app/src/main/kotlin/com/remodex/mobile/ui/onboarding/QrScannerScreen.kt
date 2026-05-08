@@ -116,6 +116,12 @@ fun QrScannerScreen(
                     relayHostOverride = "",
                     tokenOverride = "",
                 )
+                runCatching {
+                    AppContainer.betaEngagementRepository.recordMissionEvent(
+                        eventType = "qr_pairing_completed",
+                        screen = "qr_pairing",
+                    )
+                }
                 onPairingComplete()
             } catch (e: LoopbackRelayException) {
                 errorMessage = e.message

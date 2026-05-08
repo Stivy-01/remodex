@@ -58,6 +58,7 @@ internal fun TurnComposerSecondaryBar(
     onRefreshGitBranches: () -> Unit,
     onCheckoutGitBranch: (String) -> Unit,
     onCreateGitBranch: (String) -> Unit,
+    onOpenBranchSelector: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -258,6 +259,7 @@ internal fun TurnComposerSecondaryBar(
                     onRefreshBranches = onRefreshGitBranches,
                     onCheckoutBranch = onCheckoutGitBranch,
                     onCreateBranch = onCreateGitBranch,
+                    onOpenBranchSelector = onOpenBranchSelector,
                     compact = true,
                 )
             }
