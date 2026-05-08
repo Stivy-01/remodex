@@ -11,8 +11,9 @@ import com.remodex.mobile.ui.turn.TurnMessageRow
 fun AssistantMessageBlock(
     message: CodexMessage,
     modifier: Modifier = Modifier,
+    onOpenFullMessage: ((CodexMessage) -> Unit)? = null,
 ) {
     if (message.role == CodexMessageRole.assistant) {
-        TurnMessageRow(message = message, modifier = modifier)
+        TurnMessageRow(message = message, modifier = modifier, onOpenFullMessage = onOpenFullMessage)
     }
 }

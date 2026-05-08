@@ -16,6 +16,7 @@
     <string name="thread_list_empty">No threads yet. Connect the bridge, then refresh the list or start a chat on the desktop.</string>
     <string name="thread_list_truncated">+%1$d more…</string>
     <string name="nav_settings">Settings</string>
+    <string name="nav_tester_hq">Tester HQ</string>
     <string name="nav_reconnect">Reconnect</string>
     <string name="nav_reconnect_retry">Reconnect again</string>
     <string name="nav_reconnect_scan_new_qr">Scan new QR</string>
@@ -36,6 +37,7 @@
     <string name="turn_timeline_kind_command">Command</string>
     <string name="turn_timeline_group_executed_commands">Comandi eseguiti</string>
     <string name="turn_timeline_group_modified_files">File modificati</string>
+    <string name="turn_timeline_group_work_details">Activity details</string>
     <string name="turn_timeline_group_toggle_expand_cd">Mostra %1$d elementi</string>
     <string name="turn_timeline_group_toggle_collapse_cd">Nascondi gruppo</string>
     <string name="turn_timeline_kind_plan">Plan</string>
@@ -121,6 +123,8 @@
     <string name="turn_message_action_undo_applying">Undoing…</string>
     <string name="turn_message_action_undo_failed">Could not undo this response.</string>
     <string name="turn_message_action_undo_failed_title">Undo failed</string>
+    <string name="turn_message_see_more">See more</string>
+    <string name="turn_message_full_sheet_title">Full message</string>
     <string name="turn_fork_sheet_title">Fork current thread</string>
     <string name="turn_fork_sheet_message">Create a fork of this conversation and switch to it.</string>
     <string name="turn_fork_sheet_project_path">Project: %1$s</string>
@@ -225,6 +229,7 @@
     <string name="turn_plan_apply_requires_empty">Use plan is available only when composer is empty.</string>
     <string name="turn_plan_open_sheet">Sheet</string>
     <string name="turn_plan_sheet_title">Plan details</string>
+    <string name="turn_plan_more_steps">+%1$d more steps</string>
     <string name="turn_plan_sheet_progress">Progress: %1$s</string>
     <string name="turn_plan_step_todo">todo</string>
     <string name="turn_plan_step_doing">doing</string>
@@ -302,6 +307,7 @@
     <string name="nav_whats_new">What\'s new</string>
     <string name="settings_about_remodex_hint">Version, pairing, and local-first notes.</string>
     <string name="settings_whats_new_hint">Recent Android changes.</string>
+    <string name="settings_tester_hq_hint">Daily beta missions, feedback, and anonymous contribution score.</string>
     <string name="settings_notifications_hint">Local alerts only. Remodex uses them for completed runs and other attention-needed events while the app is backgrounded.</string>
     <string name="settings_notifications_run_completion_title">Run-completion attention</string>
     <string name="settings_notifications_status_enabled">Enabled by system settings</string>
@@ -348,13 +354,17 @@
     <string name="about_remodex_pairing_title">Pairing</string>
     <string name="about_remodex_pairing_body">Use the QR flow to connect to the bridge on your computer.</string>
     <string name="whats_new_title">What\'s new</string>
-    <string name="whats_new_intro">This build adds local app info and release notes without changing the bridge flow.</string>
-    <string name="whats_new_settings_title">Settings links</string>
-    <string name="whats_new_local_title">Local bridge</string>
-    <string name="whats_new_compact_title">Compact layout</string>
-    <string name="whats_new_item_settings">Settings now links to About Remodex and What\'s new.</string>
-    <string name="whats_new_item_local">The app stays centered on your paired local bridge.</string>
-    <string name="whats_new_item_compact">The new screens are kept short for phone-sized layouts.</string>
+    <string name="whats_new_intro">Recent changes from the latest Android branch updates.</string>
+    <string name="whats_new_beta_title">Beta engagement</string>
+    <string name="whats_new_scroll_title">Timeline polish</string>
+    <string name="whats_new_streaming_title">Hydration and streaming</string>
+    <string name="whats_new_repo_title">Repo hygiene</string>
+    <string name="whats_new_bridge_title">Bridge git flow</string>
+    <string name="whats_new_item_beta">Tester HQ is available for beta builds with anonymous opt-in, missions, feedback, leaderboard, and Supabase Edge Function support.</string>
+    <string name="whats_new_item_scroll">Conversation scrolling, grouped timeline rows, markdown display, and message behavior were tightened for smoother daily use.</string>
+    <string name="whats_new_item_streaming">Thread hydration and live streaming updates now merge more reliably into the active timeline.</string>
+    <string name="whats_new_item_repo">Ignore rules were cleaned up so local build, index, Supabase temp, and signing files stay out of commits.</string>
+    <string name="whats_new_item_bridge">Bundled bridge git handling was preserved with tests for safer local worktree and branch operations.</string>
     <string name="nav_pairing_scan">Scan pairing QR</string>
     <string name="onboarding_title">Welcome to Remodex</string>
     <string name="onboarding_subtitle">Pair your phone with the Remodex bridge on your computer.</string>

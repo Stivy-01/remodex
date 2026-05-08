@@ -274,7 +274,7 @@ class TimelineMessageGroupingTest {
     }
 
     @Test
-    fun assistantWorkGroup_collapsesLatestTurnByDefaultWithFirstHiddenMessageKey() {
+    fun assistantWorkGroup_collapsesLatestTurnByDefaultWithStableTurnKey() {
         fun assistant(id: String, seconds: Long): CodexMessage =
             CodexMessage(
                 id = id,
@@ -290,7 +290,7 @@ class TimelineMessageGroupingTest {
 
         assertEquals(2, items.size)
         assertIs<TimelineListItem.AssistantWorkGroup>(items[0]).also {
-            assertEquals("step-1", it.stableKey)
+            assertEquals("assistant-work-turn-1", it.stableKey)
             assertEquals(listOf("step-1"), it.messages.map { message -> message.id })
         }
         assertIs<TimelineListItem.Single>(items[1]).also {

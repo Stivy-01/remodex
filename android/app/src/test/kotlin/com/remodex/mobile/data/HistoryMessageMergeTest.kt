@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 
 class HistoryMessageMergeTest {
     @Test
-    fun merge_reordersLateDesktopHistoryAheadOfExistingPhoneRows() {
+    fun merge_preservesExistingRowOrderWhenHistoryArrivesLate() {
         val existing =
             listOf(
                 message(
@@ -52,8 +52,8 @@ class HistoryMessageMergeTest {
         val merged = HistoryMessageMerge.merge(existing, incoming)
 
         assertEquals(
-            listOf("desktop-user", "desktop-assistant", "phone-local"),
-            merged.sortedBy { it.orderIndex }.map { it.id },
+            listOf("phone-local", "desktop-user", "desktop-assistant"),
+            merged.map { it.id },
         )
     }
 
@@ -99,9 +99,78 @@ class HistoryMessageMergeTest {
 
         val merged = HistoryMessageMerge.merge(existing, incoming)
 
-        assertEquals(listOf("phone-local", "desktop-user"), merged.sortedBy { it.orderIndex }.map { it.id })
+        assertEquals(listOf("phone-local", "desktop-user"), merged.map { it.id })
         assertEquals(CodexMessageDeliveryState.confirmed, merged.first().deliveryState)
         assertEquals("turn-phone", merged.first().turnId)
+    }
+
+    @Test
+    fun merge_keepsDistinctNoItemMessagesWithSameLongPrefix() {
+        val prefix = "x".repeat(180)
+        val existing =
+            listOf(
+                message(
+                    id = "assistant-1",
+                    role = CodexMessageRole.assistant,
+                    kind = CodexMessageKind.chat,
+                    text = "$prefix one",
+                    turnId = "turn-1",
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "assistant-2",
+                    role = CodexMessageRole.assistant,
+                    kind = CodexMessageKind.chat,
+                    text = "$prefix two",
+                    turnId = "turn-1",
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(listOf("assistant-1", "assistant-2"), merged.map { it.id })
+    }
+
+    @Test
+    fun merge_keepsRepeatedConfirmedUserMessagesWithoutIds() {
+        val existing =
+            listOf(
+                message(
+                    id = "repeat-1",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "repeat",
+                    turnId = null,
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "repeat-2",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "repeat",
+                    turnId = null,
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(listOf("repeat-1", "repeat-2"), merged.map { it.id })
     }
 
     @Test

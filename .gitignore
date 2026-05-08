@@ -25,6 +25,7 @@ CodexMobile/*
 *.p12
 *.key
 *.cer
+android/supabase/.temp/
 .cocoindex_code/
 upload-keystore.jks
 CodexMobile/BuildSupport/PrivateOverrides.xcconfig
@@ -56,6 +57,10 @@ $TMP_PLACEHOLDER
 # VS Code
 .vscode/
 
+# Tauri logs
+remodex-host/src-tauri/target/
+remodex-host/src-tauri/*.log
+remodex-host/src-tauri/**/*.log
 
 # useless files
 deeplinks-D8FzxbSB.js

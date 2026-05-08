@@ -45,6 +45,7 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.remodex.mobile.R
+import com.remodex.mobile.core.model.TurnTimelineCacheKey
 import kotlinx.coroutines.launch
 
 private const val CODE_BLOCK_PREVIEW_MAX_LINES = 160
@@ -58,6 +59,7 @@ fun TurnMarkdownBody(
     markdown: String,
     contentColor: Color,
     modifier: Modifier = Modifier,
+    keyPrefix: String = TurnTimelineCacheKey.textKey("markdown-body", markdown),
 ) {
     val displayMarkdown = TurnMarkdownRenderCache.visibleProse(markdown)
     val clipboard = LocalClipboard.current
@@ -83,7 +85,7 @@ fun TurnMarkdownBody(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        segments.forEach { segment ->
+        segments.forEachIndexed { index, segment ->
             when (segment) {
                 is MarkdownFenceSegment.Text -> {
                     val state = rememberMarkdownState(segment.markdown, retainState = true)
@@ -142,6 +144,7 @@ fun TurnMarkdownBody(
                                         CodeBlockCard(
                                             raw = model.content.trimEnd(),
                                             language = null,
+                                            expansionKey = "$keyPrefix-inline-code-$index",
                                             onCopy = { text ->
                                                 scope.launch {
                                                     clipboard.setClipEntry(ClipData.newPlainText("code", text).toClipEntry())
@@ -157,6 +160,7 @@ fun TurnMarkdownBody(
                     CodeBlockCard(
                         raw = segment.code,
                         language = segment.language,
+                        expansionKey = "$keyPrefix-code-$index",
                         onCopy = { text ->
                             scope.launch {
                                 clipboard.setClipEntry(ClipData.newPlainText("code", text).toClipEntry())
@@ -173,10 +177,11 @@ fun TurnMarkdownBody(
 private fun CodeBlockCard(
     raw: String,
     language: String?,
+    expansionKey: String,
     onCopy: (String) -> Unit,
 ) {
     if (raw.isEmpty()) return
-    var expanded by rememberSaveable(raw) { mutableStateOf(false) }
+    var expanded by rememberSaveable(expansionKey) { mutableStateOf(false) }
     val preview =
         remember(raw, expanded) {
             if (expanded) {

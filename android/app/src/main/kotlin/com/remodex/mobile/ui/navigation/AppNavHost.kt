@@ -1,5 +1,7 @@
 package com.remodex.mobile.ui.navigation
 
+import com.remodex.mobile.AppContainer
+import com.remodex.mobile.core.config.FeatureFlags
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -11,6 +13,7 @@ import com.remodex.mobile.ui.about.WhatsNewScreen
 import com.remodex.mobile.ui.home.RootReconnectUiState
 import com.remodex.mobile.ui.home.HomeMainContent
 import com.remodex.mobile.ui.archived.ArchivedChatsScreen
+import com.remodex.mobile.ui.beta.TesterHqScreen
 import com.remodex.mobile.ui.settings.SettingsScreen
 
 @Composable
@@ -21,6 +24,7 @@ fun AppNavHost(
     onReconnectSavedPairing: () -> Unit = {},
     onWakeSavedComputer: () -> Unit = {},
     onOpenPairingScanner: () -> Unit = {},
+    onGitContextChanged: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -35,6 +39,7 @@ fun AppNavHost(
                 onReconnectSavedPairing = onReconnectSavedPairing,
                 onWakeSavedComputer = onWakeSavedComputer,
                 onOpenPairingScanner = onOpenPairingScanner,
+                onGitContextChanged = onGitContextChanged,
             )
         }
         composable(AppRoutes.Settings) {
@@ -43,6 +48,11 @@ fun AppNavHost(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToAbout = { navController.navigate(AppRoutes.About) },
                 onNavigateToWhatsNew = { navController.navigate(AppRoutes.WhatsNew) },
+                onNavigateToTesterHq = {
+                    if (FeatureFlags.betaEngagementEnabled) {
+                        navController.navigate(AppRoutes.TesterHq)
+                    }
+                },
             )
         }
         composable(AppRoutes.Archived) {
@@ -56,6 +66,12 @@ fun AppNavHost(
         }
         composable(AppRoutes.WhatsNew) {
             WhatsNewScreen(onNavigateBack = { navController.popBackStack() })
+        }
+        composable(AppRoutes.TesterHq) {
+            TesterHqScreen(
+                repository = AppContainer.betaEngagementRepository,
+                onNavigateBack = { navController.popBackStack() },
+            )
         }
     }
 }

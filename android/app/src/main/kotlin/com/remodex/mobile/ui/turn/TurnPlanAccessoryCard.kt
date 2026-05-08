@@ -25,6 +25,8 @@ import com.remodex.mobile.core.model.CodexMessageRole
 import com.remodex.mobile.core.model.CodexPlanStep
 import com.remodex.mobile.core.model.CodexPlanStepStatus
 
+private const val PLAN_ACCESSORY_MAX_VISIBLE_STEPS = 4
+
 /**
  * J13 polish: compact active-plan card pinned above composer with status, progress rail, and inline details toggle.
  */
@@ -161,7 +163,7 @@ internal fun TurnPlanAccessoryCard(
             }
 
             if (expanded) {
-                snapshot.steps.forEachIndexed { index, step ->
+                snapshot.steps.take(PLAN_ACCESSORY_MAX_VISIBLE_STEPS).forEachIndexed { index, step ->
                     val statusLabel =
                         when (step.status) {
                             CodexPlanStepStatus.inProgress -> stringResource(R.string.turn_plan_step_doing)
@@ -172,6 +174,14 @@ internal fun TurnPlanAccessoryCard(
                         text = "${index + 1}. [$statusLabel] ${step.step}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.95f),
+                    )
+                }
+                val hiddenStepCount = snapshot.steps.size - PLAN_ACCESSORY_MAX_VISIBLE_STEPS
+                if (hiddenStepCount > 0) {
+                    Text(
+                        text = stringResource(R.string.turn_plan_more_steps, hiddenStepCount),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f),
                     )
                 }
             }

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.remodex.mobile.R
+import com.remodex.mobile.core.model.TurnTimelineCacheKey
 import com.remodex.mobile.data.TurnMarkdownSegmentKind
 import com.remodex.mobile.data.TurnTimelineRichContentCache
 import kotlinx.coroutines.launch
@@ -49,6 +50,7 @@ internal fun TurnRichMarkdownBody(
     markdown: String,
     contentColor: Color,
     modifier: Modifier = Modifier,
+    keyPrefix: String = TurnTimelineCacheKey.textKey("rich-markdown", markdown),
 ) {
     val segments = TurnTimelineRichContentCache.parseMermaidMarkdown(markdown)
     if (segments == null) {
@@ -56,6 +58,7 @@ internal fun TurnRichMarkdownBody(
             markdown = markdown,
             contentColor = contentColor,
             modifier = modifier,
+            keyPrefix = keyPrefix,
         )
         return
     }
@@ -64,7 +67,7 @@ internal fun TurnRichMarkdownBody(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        segments.forEach { segment ->
+        segments.forEachIndexed { index, segment ->
             when (segment.kind) {
                 TurnMarkdownSegmentKind.markdown -> {
                     if (segment.text.isNotBlank()) {
@@ -72,6 +75,7 @@ internal fun TurnRichMarkdownBody(
                             markdown = segment.text,
                             contentColor = contentColor,
                             modifier = Modifier.fillMaxWidth(),
+                            keyPrefix = "$keyPrefix-md-$index",
                         )
                     }
                 }

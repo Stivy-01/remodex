@@ -173,7 +173,7 @@ internal object IncomingNotificationParsers {
             nested?.get("delta")?.stringValue,
             nested?.get("text")?.stringValue,
         ).forEach { s ->
-            s?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+            s?.takeIf { it.isNotEmpty() }?.let { return it }
         }
         return null
     }
@@ -217,7 +217,7 @@ internal object IncomingNotificationParsers {
         params: Map<String, JSONValue>?,
     ): String? {
         if (params == null) return null
-        extractTextDelta(params)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        extractTextDelta(params)?.takeIf { it.isNotEmpty() }?.let { return it }
         val ev = envelopeEvent(params)
         listOf(
             { params["delta"]?.stringValue },
@@ -225,7 +225,7 @@ internal object IncomingNotificationParsers {
             { ev?.get("delta")?.stringValue },
             { ev?.get("text")?.stringValue },
         ).forEach { fn ->
-            fn()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+            fn()?.takeIf { it.isNotEmpty() }?.let { return it }
         }
         return null
     }

@@ -48,7 +48,6 @@ import com.remodex.mobile.core.model.CodexMessageRole
 import com.remodex.mobile.core.model.CommandExecutionDetails
 import com.remodex.mobile.ui.turn.TurnMessageRow
 import com.remodex.mobile.ui.turn.TurnTimelineGroupedRunsRow
-import java.time.Duration
 import kotlinx.coroutines.launch
 
 /**
@@ -65,6 +64,7 @@ fun MessageList(
     olderHistoryError: String? = null,
     onLoadEarlierMessages: (() -> Unit)? = null,
     commandExecutionDetailsByItemId: Map<String, CommandExecutionDetails> = emptyMap(),
+    onOpenFullMessage: ((CodexMessage) -> Unit)? = null,
     verticalItemSpacing: Dp = 10.dp,
     contentPadding: PaddingValues =
         PaddingValues(top = 10.dp, bottom = 18.dp, start = 2.dp, end = 2.dp),
@@ -82,13 +82,14 @@ fun MessageList(
     messageContent: @Composable (CodexMessage) -> Unit = { msg ->
         when (msg.role) {
             CodexMessageRole.user ->
-                UserMessageBubble(message = msg)
+                UserMessageBubble(message = msg, onOpenFullMessage = onOpenFullMessage)
             CodexMessageRole.assistant ->
-                AssistantMessageBlock(message = msg)
+                AssistantMessageBlock(message = msg, onOpenFullMessage = onOpenFullMessage)
             CodexMessageRole.system ->
                 TurnMessageRow(
                     message = msg,
                     commandExecutionDetails = msg.itemId?.let { commandExecutionDetailsByItemId[it] },
+                    onOpenFullMessage = onOpenFullMessage,
                 )
         }
     },
@@ -350,7 +351,7 @@ private fun AssistantWorkGroupRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                text = "Worked for ${formatWorkDuration(group.duration)}",
+                text = stringResource(R.string.turn_timeline_group_work_details),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurfaceVariant.copy(alpha = 0.74f),
             )
@@ -374,17 +375,5 @@ private fun AssistantWorkGroupRow(
                 }
             }
         }
-    }
-}
-
-private fun formatWorkDuration(duration: Duration?): String {
-    val seconds = duration?.seconds?.coerceAtLeast(0) ?: 0
-    if (seconds < 60) return "${seconds.coerceAtLeast(1)}s"
-    val minutes = seconds / 60
-    val remainder = seconds % 60
-    return if (remainder == 0L) {
-        "${minutes}m"
-    } else {
-        "${minutes}m ${remainder}s"
     }
 }

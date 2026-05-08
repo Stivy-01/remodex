@@ -27,11 +27,6 @@ internal class MessageTimelineStore(
     initialMessages: Map<String, List<CodexMessage>>,
     private val saveMessages: (Map<String, List<CodexMessage>>) -> Unit,
 ) {
-    private data class AssistantCompletionFingerprint(
-        val text: String,
-        val timestamp: Instant,
-    )
-
     private data class SubagentIdentityEntry(
         val threadId: String? = null,
         val agentId: String? = null,
@@ -43,7 +38,6 @@ internal class MessageTimelineStore(
     }
 
     private val mutex = Mutex()
-    private val assistantCompletionFingerprintByThread = mutableMapOf<String, AssistantCompletionFingerprint>()
     private val subagentIdentityByThreadId = mutableMapOf<String, SubagentIdentityEntry>()
     private val subagentIdentityByAgentId = mutableMapOf<String, SubagentIdentityEntry>()
 
@@ -628,15 +622,6 @@ internal class MessageTimelineStore(
             val resolvedItemId = itemId?.trim()?.takeIf { it.isNotEmpty() }
             val normalizedFinalText = normalizedMessageText(finalText)
             val now = Instant.now()
-            if (resolvedTurnId == null && resolvedItemId == null) {
-                val fingerprint = assistantCompletionFingerprintByThread[threadId]
-                if (fingerprint != null &&
-                    fingerprint.text == normalizedFinalText &&
-                    java.time.Duration.between(fingerprint.timestamp, now).seconds <= 45
-                ) {
-                    return@withLock
-                }
-            }
 
             val map = _messagesByThread.value.toMutableMap()
             val list = map[threadId].orEmpty().toMutableList()
@@ -706,11 +691,6 @@ internal class MessageTimelineStore(
                     )
                 }
             }
-            assistantCompletionFingerprintByThread[threadId] =
-                AssistantCompletionFingerprint(
-                    text = normalizedFinalText,
-                    timestamp = now,
-                )
             map[threadId] = list
             publishMessages(map)
         }

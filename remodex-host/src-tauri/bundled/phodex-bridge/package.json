@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "remodex",
   "version": "1.3.9",
   "description": "Local bridge between Codex and the Remodex mobile app. Run `remodex up` to start.",
@@ -28,6 +28,6 @@
   "type": "commonjs",
   "dependencies": {
     "qrcode-terminal": "^0.12.0",
-    "ws": "^8.19.0"
+    "ws": "^8.20.0"
   }
 }

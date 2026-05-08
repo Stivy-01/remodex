@@ -38,6 +38,7 @@ fun HomeMainContent(
     onReconnectSavedPairing: () -> Unit = {},
     onWakeSavedComputer: () -> Unit = {},
     onOpenPairingScanner: () -> Unit = {},
+    onGitContextChanged: () -> Unit = {},
     modifier: Modifier = Modifier.fillMaxSize(),
 ) {
     val activeThreadId by repository.activeThreadId.collectAsStateWithLifecycle()
@@ -59,6 +60,7 @@ fun HomeMainContent(
                 onReconnectSavedPairing = onReconnectSavedPairing,
                 onWakeSavedComputer = onWakeSavedComputer,
                 onOpenPairingScanner = onOpenPairingScanner,
+                onGitContextChanged = onGitContextChanged,
                 modifier = Modifier.fillMaxSize(),
             )
         }

@@ -2,7 +2,6 @@ package com.remodex.mobile.data
 
 import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexMessageDeliveryState
-import com.remodex.mobile.core.model.CodexMessageOrderCounter
 import com.remodex.mobile.core.model.CodexMessageKind
 import com.remodex.mobile.core.model.CodexMessageRole
 
@@ -19,7 +18,6 @@ internal object HistoryMessageMerge {
         if (existing.isEmpty()) {
             return incoming
                 .sortedBy { it.createdAt }
-                .map { m -> m.copy(orderIndex = CodexMessageOrderCounter.next()) }
         }
         val merged = existing.toMutableList()
         val keys = merged.map { historyKey(it) }.toMutableSet()
@@ -128,14 +126,11 @@ internal object HistoryMessageMerge {
             val k = historyKey(m)
             if (k !in keys) {
                 keys.add(k)
-                additions.add(m.copy(orderIndex = CodexMessageOrderCounter.next()))
+                additions.add(m)
             }
         }
         if (additions.isEmpty() && merged == existing) return existing
-        return (merged + additions)
-            .dedupeCompatibleUserChats()
-            .sortedWith(compareBy<CodexMessage> { it.createdAt }.thenBy { it.orderIndex })
-            .map { it.copy(orderIndex = CodexMessageOrderCounter.next()) }
+        return (merged + additions).dedupeCompatibleUserChats()
     }
 
     private fun historyKey(m: CodexMessage): String {
@@ -143,8 +138,8 @@ internal object HistoryMessageMerge {
         if (item != null) {
             return "item:${m.role}:${m.kind}:$item"
         }
-        val text = m.text.trim().take(160)
-        return "${m.role}|${m.turnId}|$text"
+        val normalizedText = normalizedMessageText(m.text)
+        return "${m.role}|${m.kind}|${m.turnId}|${m.createdAt}|${normalizedText.length}:${normalizedText.hashCode()}"
     }
 
     private fun isCompatibleUserChatDuplicate(
@@ -154,8 +149,26 @@ internal object HistoryMessageMerge {
         if (existing.role != CodexMessageRole.user || incoming.role != CodexMessageRole.user) return false
         if (existing.kind != CodexMessageKind.chat || incoming.kind != CodexMessageKind.chat) return false
         if (normalizedMessageText(existing.text) != normalizedMessageText(incoming.text)) return false
-        if (!compatibleTurnIds(existing.turnId, incoming.turnId)) return false
+        if (!isUserChatMergeEligible(existing, incoming)) return false
         return compatibleAttachments(existing, incoming)
+    }
+
+    private fun isUserChatMergeEligible(
+        existing: CodexMessage,
+        incoming: CodexMessage,
+    ): Boolean {
+        val existingItem = existing.itemId?.trim()?.takeIf { it.isNotEmpty() }
+        val incomingItem = incoming.itemId?.trim()?.takeIf { it.isNotEmpty() }
+        if (existingItem != null && incomingItem != null) return existingItem == incomingItem
+
+        val existingTurn = existing.turnId?.trim()?.takeIf { it.isNotEmpty() }
+        val incomingTurn = incoming.turnId?.trim()?.takeIf { it.isNotEmpty() }
+        if (existingTurn != null && incomingTurn != null) return existingTurn == incomingTurn
+
+        val hasPendingLocal =
+            existing.deliveryState == CodexMessageDeliveryState.pending ||
+                incoming.deliveryState == CodexMessageDeliveryState.pending
+        return hasPendingLocal && compatibleTurnIds(existing.turnId, incoming.turnId)
     }
 
     private fun mergeUserChatDuplicate(
@@ -164,7 +177,6 @@ internal object HistoryMessageMerge {
     ): CodexMessage =
         existing.copy(
             text = incoming.text.ifBlank { existing.text },
-            createdAt = incoming.createdAt,
             turnId = incoming.turnId ?: existing.turnId,
             itemId = incoming.itemId ?: existing.itemId,
             isStreaming = false,
