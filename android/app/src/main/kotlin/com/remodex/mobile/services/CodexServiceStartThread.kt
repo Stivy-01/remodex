@@ -66,6 +66,7 @@ internal suspend fun CodexService.startThreadInternal(
     _activeThreadId.value = patched.id
     sessionPersistence.saveLastActiveThreadId(patched.id)
     resumedThreadIds.add(patched.id)
+    runCatching { syncThreadHistoryInternal(patched.id, force = true) }
     return patched
 }
 

@@ -1,5 +1,11 @@
 package com.remodex.mobile.ui.turn
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,8 +16,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -25,6 +38,8 @@ import com.remodex.mobile.core.model.TurnThinkingDisclosureHints
 import com.remodex.mobile.ui.agent.FileEditRow
 import com.remodex.mobile.ui.agent.ToolCallRow
 import com.remodex.mobile.ui.theme.isAgentLightChrome
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /**
  * Timeline turn row: chat + dedicated layouts per [CodexMessageKind] (J.4/J.6).
@@ -151,6 +166,26 @@ fun TurnMessageRow(
                         cleanedDirectiveText = directiveOutcome.cleanedText,
                         hasDirectiveFindings = directiveOutcome.hasFindings,
                     )
+                val isStreamingAssistantChat =
+                    message.role == CodexMessageRole.assistant &&
+                        message.kind == CodexMessageKind.chat &&
+                        message.isStreaming
+                val revealedBodyMarkdown =
+                    rememberStreamingAssistantMarkdown(
+                        messageId = message.id,
+                        markdown = bodyMarkdown,
+                        isStreaming = isStreamingAssistantChat,
+                    )
+                val displayedBodyMarkdown =
+                    if (isStreamingAssistantChat && revealedBodyMarkdown.isEmpty()) {
+                        stringResource(R.string.turn_message_streaming_placeholder)
+                    } else {
+                        revealedBodyMarkdown
+                    }
+                val streamingModifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .streamingAssistantShimmer(isStreamingAssistantChat)
                 when (message.kind) {
                     CodexMessageKind.thinking -> {
                         TurnThinkingTimelineRow(
@@ -190,16 +225,16 @@ fun TurnMessageRow(
                         )
                     }
                     else -> {
-                        if (bodyMarkdown.isNotEmpty()) {
+                        if (displayedBodyMarkdown.isNotEmpty()) {
                             if (shouldRenderMarkdownBody(message)) {
                                 TurnRichMarkdownBody(
-                                    markdown = bodyMarkdown,
+                                    markdown = displayedBodyMarkdown,
                                     contentColor = onBubble,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = streamingModifier,
                                 )
                             } else {
                                 Text(
-                                    text = bodyMarkdown,
+                                    text = displayedBodyMarkdown,
                                     style =
                                         if (message.role == CodexMessageRole.system && message.kind == CodexMessageKind.thinking) {
                                             MaterialTheme.typography.bodySmall
@@ -207,6 +242,7 @@ fun TurnMessageRow(
                                             MaterialTheme.typography.bodyMedium
                                         },
                                     color = onBubble,
+                                    modifier = streamingModifier,
                                 )
                             }
                         }
@@ -255,6 +291,75 @@ fun TurnMessageRow(
         }
     }
 }
+
+@Composable
+private fun rememberStreamingAssistantMarkdown(
+    messageId: String,
+    markdown: String,
+    isStreaming: Boolean,
+): String {
+    var displayed by remember(messageId) { mutableStateOf(if (isStreaming) "" else markdown) }
+    val latestMarkdown by rememberUpdatedState(markdown)
+
+    LaunchedEffect(messageId, isStreaming) {
+        if (!isStreaming) {
+            displayed = latestMarkdown
+            return@LaunchedEffect
+        }
+
+        if (displayed.isEmpty()) {
+            delay(STREAMING_ASSISTANT_INITIAL_DELAY_MS)
+        }
+
+        while (isActive) {
+            val target = latestMarkdown
+            displayed =
+                when {
+                    target.isEmpty() -> ""
+                    displayed.isEmpty() -> target.take(streamingRevealStep(target.length))
+                    target.startsWith(displayed) && displayed.length < target.length -> {
+                        val nextLength =
+                            (displayed.length + streamingRevealStep(target.length - displayed.length))
+                                .coerceAtMost(target.length)
+                        target.take(nextLength)
+                    }
+                    target == displayed -> displayed
+                    else -> target
+                }
+            delay(STREAMING_ASSISTANT_REVEAL_FRAME_MS)
+        }
+    }
+
+    return if (isStreaming) displayed else markdown
+}
+
+private fun streamingRevealStep(remaining: Int): Int =
+    when {
+        remaining > 180 -> 32
+        remaining > 80 -> 20
+        remaining > 24 -> 8
+        else -> 3
+    }
+
+@Composable
+private fun Modifier.streamingAssistantShimmer(enabled: Boolean): Modifier {
+    if (!enabled) return this
+    val transition = rememberInfiniteTransition(label = "assistant-stream-shimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.86f,
+        targetValue = 1f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "assistant-stream-alpha",
+    )
+    return this.graphicsLayer { this.alpha = alpha }
+}
+
+private const val STREAMING_ASSISTANT_INITIAL_DELAY_MS = 400L
+private const val STREAMING_ASSISTANT_REVEAL_FRAME_MS = 42L
 
 @Composable
 private fun PlanMessageDetails(

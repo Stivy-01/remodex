@@ -21,6 +21,7 @@ fun AppNavHost(
     onReconnectSavedPairing: () -> Unit = {},
     onWakeSavedComputer: () -> Unit = {},
     onOpenPairingScanner: () -> Unit = {},
+    onGitContextChanged: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -35,6 +36,7 @@ fun AppNavHost(
                 onReconnectSavedPairing = onReconnectSavedPairing,
                 onWakeSavedComputer = onWakeSavedComputer,
                 onOpenPairingScanner = onOpenPairingScanner,
+                onGitContextChanged = onGitContextChanged,
             )
         }
         composable(AppRoutes.Settings) {

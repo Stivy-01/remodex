@@ -34,6 +34,29 @@ class MessageTimelineStoreTest {
         }
 
     @Test
+    fun appendAssistantDelta_preservesDeltaSpacing() =
+        runTest {
+            val store = MessageTimelineStore()
+
+            store.appendAssistantDelta(
+                threadId = "thread-1",
+                turnId = "turn-1",
+                itemId = "item-1",
+                delta = "hello",
+            )
+            store.appendAssistantDelta(
+                threadId = "thread-1",
+                turnId = "turn-1",
+                itemId = "item-1",
+                delta = " world",
+            )
+
+            val messages = store.messagesByThread.value["thread-1"].orEmpty()
+            assertEquals("hello world", messages.single().text)
+            assertEquals(true, messages.single().isStreaming)
+        }
+
+    @Test
     fun completeSystemItem_mergesStreamingReasoningRowWhenCompletionAddsItemId() =
         runTest {
             val store = MessageTimelineStore()

@@ -119,6 +119,7 @@ fun TurnConversationPane(
     onReconnectSavedPairing: () -> Unit = {},
     onWakeSavedComputer: () -> Unit = {},
     onOpenPairingScanner: () -> Unit = {},
+    onGitContextChanged: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val ready by repository.isSessionReady.collectAsStateWithLifecycle()
@@ -203,6 +204,13 @@ fun TurnConversationPane(
     var isHandingOffWorktree by remember(threadId) { mutableStateOf(false) }
     var gitBranchCheckoutError by remember(threadId) { mutableStateOf<String?>(null) }
     var worktreeHandoffError by remember(threadId) { mutableStateOf<String?>(null) }
+
+    suspend fun hydrateGitContextAfterMutation(targetThreadId: String = threadId) {
+        runCatching { repository.syncThreadHistory(targetThreadId, force = true) }
+        gitBranchReloadNonce++
+        onGitContextChanged()
+    }
+
     val reviewTarget =
         remember(reviewTargetName) {
             reviewTargetName?.let { raw ->
@@ -1455,10 +1463,11 @@ fun TurnConversationPane(
                             CodexThread.normalizeProjectPath(elsewherePathRaw) ?: elsewherePathRaw
                         if (siblingElsewhere != null) {
                             repository.setActiveThreadId(siblingElsewhere.id)
+                            hydrateGitContextAfterMutation(siblingElsewhere.id)
                         } else {
                             repository.moveThreadToProjectPath(threadId, targetNormalized)
+                            hydrateGitContextAfterMutation()
                         }
-                        gitBranchReloadNonce++
                     }.onFailure { e ->
                         gitBranchCheckoutError = GitBranchDisplayMapper.userVisibleMessage(e)
                     }
@@ -1470,7 +1479,7 @@ fun TurnConversationPane(
                 isSwitchingGitBranch = true
                 gitBranchCheckoutError = null
                 runCatching { GitActionsService(repository, cwd).checkout(selectedBranch) }
-                    .onSuccess { gitBranchReloadNonce++ }
+                    .onSuccess { hydrateGitContextAfterMutation() }
                     .onFailure { e ->
                         gitBranchCheckoutError = GitBranchDisplayMapper.userVisibleMessage(e)
                     }
@@ -1503,7 +1512,7 @@ fun TurnConversationPane(
                                 ),
                             )
                         gitBranchPaneState = GitBranchPaneState.Loaded(nextSummary)
-                        gitBranchReloadNonce++
+                        hydrateGitContextAfterMutation()
                     }.onFailure { e ->
                         gitBranchCheckoutError = GitBranchDisplayMapper.userVisibleMessage(e)
                     }

@@ -1016,6 +1016,7 @@ fun MainShell(
                         onReconnectSavedPairing = viewModel::reconnectSavedPairingManually,
                         onWakeSavedComputer = viewModel::wakeSavedComputerDisplay,
                         onOpenPairingScanner = onOpenPairingScanner,
+                        onGitContextChanged = { gitToolbarRefreshNonce++ },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
