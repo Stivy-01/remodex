@@ -35,21 +35,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.remodex.mobile.R
-import com.remodex.mobile.ui.theme.AgentLightColors
-import com.remodex.mobile.ui.theme.isAgentLightChrome
 import com.remodex.mobile.data.GitBranchDisplaySummary
 import com.remodex.mobile.data.GitBranchPickerRules
+import com.remodex.mobile.ui.theme.AgentLightColors
+import com.remodex.mobile.ui.theme.isAgentLightChrome
 
 /** Read-only Git branch / worktree snapshot for the active thread (J.7c), with optional picker. */
 sealed class GitBranchPaneState {
@@ -98,6 +97,7 @@ internal fun TurnGitBranchAccessory(
 
     if (sheetOpen && state is GitBranchPaneState.Loaded) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
         ModalBottomSheet(
             onDismissRequest = {
                 sheetOpen = false
@@ -125,6 +125,7 @@ internal fun TurnGitBranchAccessory(
             )
         }
     }
+
     if (createDialogOpen && state is GitBranchPaneState.Loaded) {
         CreateBranchDialog(
             branchName = newBranchName,
@@ -172,6 +173,7 @@ internal fun TurnGitBranchAccessory(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
                 )
+
                 Text(
                     text = stringResource(R.string.git_branch_loading),
                     style = MaterialTheme.typography.bodySmall,
@@ -207,8 +209,7 @@ internal fun TurnGitBranchAccessory(
         is GitBranchPaneState.Failed ->
             Text(
                 text = state.message,
-                modifier =
-                    modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                modifier = modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -229,11 +230,18 @@ private fun GitBranchPickerSheetContent(
     val defaultBr = summary.defaultBranch
     val current = summary.currentBranch
     val q = searchQuery.trim().lowercase()
-    fun matchesSearch(b: String): Boolean = q.isEmpty() || b.lowercase().contains(q)
+
+    fun matchesSearch(branch: String): Boolean = q.isEmpty() || branch.lowercase().contains(q)
+
     val defaultRowBranch = defaultBr?.takeIf(::matchesSearch)
+
     val nonDefaultBranches = run {
         val base =
-            summary.branches.filter { it != defaultBr }.filter(::matchesSearch).sorted()
+            summary.branches
+                .filter { it != defaultBr }
+                .filter(::matchesSearch)
+                .sorted()
+
         if (q.isNotEmpty() || current.isNullOrBlank() || current == defaultBr || !base.contains(current)) {
             base
         } else {
@@ -253,6 +261,7 @@ private fun GitBranchPickerSheetContent(
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 8.dp),
         )
+
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
@@ -261,7 +270,9 @@ private fun GitBranchPickerSheetContent(
             singleLine = true,
             enabled = !isSwitchingBranch,
         )
+
         Spacer(modifier = Modifier.height(12.dp))
+
         TextButton(
             onClick = onOpenCreateBranch,
             enabled = !isSwitchingBranch,
@@ -269,33 +280,35 @@ private fun GitBranchPickerSheetContent(
         ) {
             Text(stringResource(R.string.git_branch_create_new))
         }
+
         LazyColumn(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(320.dp),
         ) {
-            defaultRowBranch?.let { br ->
-                item(key = "default-$br") {
+            defaultRowBranch?.let { branch ->
+                item(key = "default-$branch") {
                     BranchPickerRow(
-                        branch = br,
+                        branch = branch,
                         isDefault = true,
-                        isCurrent = br == current,
-                        badgeElsewhere =
-                            elsewhereBadgeKind(br, elsewhere),
+                        isCurrent = branch == current,
+                        badgeElsewhere = elsewhereBadgeKind(branch, elsewhere),
                         disabled =
                             isSwitchingBranch ||
                                 GitBranchPickerRules.isBranchRowDisabledForCheckout(
-                                    br,
+                                    branch,
                                     current,
                                     elsewhere,
                                     summary.worktreePathByBranch,
                                 ),
-                        onClick = { onSelectBranch(br) },
+                        onClick = { onSelectBranch(branch) },
                     )
+
                     HorizontalDivider()
                 }
             }
+
             items(
                 items = nonDefaultBranches,
                 key = { it },
@@ -304,8 +317,7 @@ private fun GitBranchPickerSheetContent(
                     branch = branch,
                     isDefault = false,
                     isCurrent = branch == current,
-                    badgeElsewhere =
-                        elsewhereBadgeKind(branch, elsewhere),
+                    badgeElsewhere = elsewhereBadgeKind(branch, elsewhere),
                     disabled =
                         isSwitchingBranch ||
                             GitBranchPickerRules.isBranchRowDisabledForCheckout(
@@ -316,9 +328,11 @@ private fun GitBranchPickerSheetContent(
                             ),
                     onClick = { onSelectBranch(branch) },
                 )
+
                 HorizontalDivider()
             }
         }
+
         if (nonDefaultBranches.isEmpty() && defaultRowBranch == null) {
             Text(
                 text = stringResource(R.string.git_branch_picker_empty),
@@ -327,6 +341,7 @@ private fun GitBranchPickerSheetContent(
                 modifier = Modifier.padding(vertical = 16.dp),
             )
         }
+
         TextButton(
             onClick = onRefresh,
             enabled = !isSwitchingBranch,
@@ -355,14 +370,17 @@ private fun CreateBranchDialog(
     onCreate: (String) -> Unit,
 ) {
     val trimmed = branchName.trim()
+
     val error =
         when {
             trimmed.isEmpty() -> null
             !isLikelyValidBranchName(trimmed) -> stringResource(R.string.git_branch_create_invalid)
             existingBranches.any { it == trimmed } || currentBranch == trimmed ->
                 stringResource(R.string.git_branch_create_exists)
+
             else -> null
         }
+
     val canCreate = trimmed.isNotEmpty() && error == null && !isSwitchingBranch
 
     AlertDialog(
@@ -379,6 +397,7 @@ private fun CreateBranchDialog(
                     isError = error != null,
                     modifier = Modifier.fillMaxWidth(),
                 )
+
                 if (error != null) {
                     Text(
                         text = error,
@@ -410,6 +429,7 @@ private fun isLikelyValidBranchName(name: String): Boolean {
     if (name.any { it.isWhitespace() }) return false
     if (name.contains("..") || name.contains("\\") || name.endsWith(".") || name.endsWith("/")) return false
     if (name.startsWith("/") || name.startsWith("-")) return false
+
     return name.none { it in "~^:?*[" }
 }
 
@@ -422,6 +442,7 @@ private fun elsewhereBadgeKind(
     elsewhere: Set<String>,
 ): ElsewhereBadgeKind? {
     if (!elsewhere.contains(branch)) return null
+
     return ElsewhereBadgeKind.OpenElsewhere
 }
 
@@ -439,6 +460,7 @@ private fun BranchPickerRow(
             ElsewhereBadgeKind.OpenElsewhere -> stringResource(R.string.git_branch_badge_open_elsewhere)
             null -> null
         }
+
     Row(
         modifier =
             Modifier
@@ -459,6 +481,7 @@ private fun BranchPickerRow(
                         MaterialTheme.colorScheme.onSurface
                     },
             )
+
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -466,14 +489,17 @@ private fun BranchPickerRow(
                 if (isCurrent) {
                     BranchBadge(stringResource(R.string.git_branch_badge_current))
                 }
+
                 if (isDefault) {
                     BranchBadge(stringResource(R.string.git_branch_badge_default))
                 }
+
                 if (badgeText != null) {
                     BranchBadge(badgeText)
                 }
             }
         }
+
         if (isCurrent) {
             Icon(
                 imageVector = Icons.Default.Check,
@@ -512,8 +538,7 @@ private fun MutedHint(
 ) {
     Text(
         text = text,
-        modifier =
-            modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+        modifier = modifier.padding(horizontal = 4.dp, vertical = 2.dp),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -531,24 +556,42 @@ private fun LoadedGitBranchPill(
     val branchName = summary.currentBranch ?: unknown
     val chrome = isAgentLightChrome()
     val pillShape = RoundedCornerShape(50)
+
     val pillFill =
         if (chrome) {
             AgentLightColors.Surface.copy(alpha = 0.93f)
         } else {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         }
+
     val outlineMod: Modifier =
-        if (chrome) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, pillShape) else Modifier
+        if (chrome) {
+            Modifier.border(1.dp, MaterialTheme.colorScheme.outline, pillShape)
+        } else {
+            Modifier
+        }
+
     val glyphTint =
-        if (chrome) AgentLightColors.IconMuted else MaterialTheme.colorScheme.onSurfaceVariant
+        if (chrome) {
+            AgentLightColors.IconMuted
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
     val labelTint =
-        if (chrome) AgentLightColors.TextSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+        if (chrome) {
+            AgentLightColors.TextSecondary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
     val clickableMod =
         if (branchPickerEnabled) {
             Modifier.clickable(onClick = onOpenPicker)
         } else {
             Modifier
         }
+
     BoxWithConstraints(modifier = modifier) {
         Surface(
             shape = pillShape,
@@ -573,6 +616,7 @@ private fun LoadedGitBranchPill(
                     modifier = Modifier.size(11.dp),
                     tint = glyphTint,
                 )
+
                 Text(
                     text = branchName,
                     modifier =
@@ -585,6 +629,7 @@ private fun LoadedGitBranchPill(
                     overflow = TextOverflow.Ellipsis,
                     softWrap = false,
                 )
+
                 if (isSwitchingBranch) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(10.dp),
@@ -614,12 +659,14 @@ private fun LoadedGitBranchStrip(
     val unknown = stringResource(R.string.git_branch_placeholder_unknown)
     val current = summary.currentBranch ?: unknown
     val defaultBr = summary.defaultBranch ?: unknown
+
     val dirtySuffix =
         if (summary.isDirty) {
             stringResource(R.string.git_branch_dirty_marker)
         } else {
             ""
         }
+
     val elsewhereSuffix =
         if (summary.branchesCheckedOutElsewhere.isEmpty()) {
             ""
@@ -629,12 +676,14 @@ private fun LoadedGitBranchStrip(
                 summary.branchesCheckedOutElsewhere.size,
             )
         }
+
     val line =
         stringResource(
             R.string.git_branch_line_current_default,
             current,
             defaultBr,
         ) + dirtySuffix + elsewhereSuffix
+
     val cd =
         stringResource(
             R.string.git_branch_cd_loaded,
@@ -642,6 +691,7 @@ private fun LoadedGitBranchStrip(
             defaultBr,
             summary.branchesCheckedOutElsewhere.size,
         )
+
     val stripModifier =
         if (branchPickerEnabled) {
             modifier
@@ -650,14 +700,17 @@ private fun LoadedGitBranchStrip(
         } else {
             modifier.fillMaxWidth()
         }
+
     val hintRunning = stringResource(R.string.git_branch_picker_disabled_running)
     val hintSwitching = stringResource(R.string.git_branch_switching_inline)
+
     val footerHint =
         when {
             isSwitchingBranch -> hintSwitching
             !branchPickerEnabled && summary.branches.isNotEmpty() -> hintRunning
             else -> null
         }
+
     Column(modifier = stripModifier) {
         Surface(
             shape = RoundedCornerShape(12.dp),
@@ -677,6 +730,7 @@ private fun LoadedGitBranchStrip(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
                 if (branchPickerEnabled) {
                     Text(
                         text = stringResource(R.string.git_branch_tap_to_switch),
@@ -686,12 +740,11 @@ private fun LoadedGitBranchStrip(
                 }
             }
         }
+
         footerHint?.let {
             Text(
                 text = it,
-                modifier =
-                    Modifier
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
