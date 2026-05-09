@@ -46,7 +46,7 @@ class TurnSmartScrollNavigationTest {
     }
 
     @Test
-    fun nearBottomOffersPreviousMessage() {
+    fun nearBottomHidesNavigationToAvoidCoveringMessageActions() {
         val state =
             buildSmartScrollNavigationState(
                 totalItemsCount = 6,
@@ -56,8 +56,7 @@ class TurnSmartScrollNavigationTest {
                 isNearBottom = true,
         )
 
-        assertEquals(listOf(SMART_SCROLL_LABEL_PREV_USER), state.actions.map { it.label })
-        assertEquals(3, state.actions.single().targetIndex)
+        assertEquals(emptyList(), state.actions)
     }
 
     @Test
