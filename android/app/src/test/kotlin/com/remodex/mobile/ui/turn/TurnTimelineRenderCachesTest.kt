@@ -35,9 +35,9 @@ class TurnTimelineRenderCachesTest {
         val running = TurnMarkdownRenderCache.humanizeCommand(raw, isRunning = true)
         val completed = TurnMarkdownRenderCache.humanizeCommand(raw, isRunning = false)
 
-        assertEquals("Esecuzione di", running.verb)
+        assertEquals("Running", running.verb)
         assertEquals("'cmd /c gradlew.bat app:compileDebugKotlin'", running.target)
-        assertEquals("Esecuzione completata di", completed.verb)
+        assertEquals("Completed", completed.verb)
         assertEquals("'cmd /c gradlew.bat app:compileDebugKotlin'", completed.target)
     }
 
@@ -48,7 +48,7 @@ class TurnTimelineRenderCachesTest {
 
         val completed = TurnMarkdownRenderCache.humanizeCommand(raw, isRunning = false)
 
-        assertEquals("Esecuzione completata di", completed.verb)
+        assertEquals("Completed", completed.verb)
         assertEquals("'cmd /c gradlew.bat app:compileDebugKotlin'", completed.target)
     }
 
@@ -60,7 +60,7 @@ class TurnTimelineRenderCachesTest {
 
         val completed = TurnMarkdownRenderCache.humanizeCommand(raw, isRunning = false)
 
-        assertEquals("Esecuzione completata di", completed.verb)
+        assertEquals("Completed", completed.verb)
         assertEquals("'cmd /c gradlew.bat app:compileDebugKotlin'", completed.target)
     }
 
@@ -72,7 +72,7 @@ class TurnTimelineRenderCachesTest {
 
         val completed = TurnMarkdownRenderCache.humanizeCommand(raw, isRunning = false)
 
-        assertEquals("Esecuzione completata di", completed.verb)
+        assertEquals("Completed", completed.verb)
         assertEquals("'cmd /c gradlew.bat app:compileDebugKotlin'", completed.target)
     }
 

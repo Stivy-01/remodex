@@ -33,6 +33,7 @@ const POINTS = {
 };
 
 const MISSION_EVENTS: Record<string, { suffixes: string[]; screen?: string; oncePerDay?: boolean }> = {
+  tester_hq_opened: { suffixes: ["open", "tester-hq-opened", "daily-open"], screen: "tester_hq" },
   main_flow_completed: { suffixes: ["test-main-flow", "main-flow", "send-message"], screen: "conversation" },
   message_sent: { suffixes: ["send-message", "test-main-flow"], screen: "conversation" },
   qr_pairing_completed: { suffixes: ["qr-pairing"], screen: "qr_pairing" },

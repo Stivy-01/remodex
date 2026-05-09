@@ -187,6 +187,7 @@ Response:
 Supported event types:
 
 ```text
+tester_hq_opened
 main_flow_completed
 message_sent
 qr_pairing_completed

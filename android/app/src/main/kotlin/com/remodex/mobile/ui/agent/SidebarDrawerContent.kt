@@ -103,6 +103,7 @@ fun SidebarDrawerContent(
                     navController.navigate(AppRoutes.Archived)
                 }
             },
+            onThreadSelected = closeDrawer,
             modifier =
                 Modifier
                     .weight(1f)

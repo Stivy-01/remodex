@@ -23,7 +23,7 @@ These are completed by existing dedicated endpoints.
 
 | Mission ID suffix | Status | Event / endpoint | Points | Title | Description |
 | --- | --- | --- | ---: | --- | --- |
-| `open` | auto-core | `POST /beta/open` | 15 | Open latest beta | Open the newest Android beta build and visit Tester HQ. |
+| `open` | auto-core + auto-live | `POST /beta/open` + `tester_hq_opened` | 15 | Open latest beta | Open the newest Android beta build and visit Tester HQ. |
 | `feedback` | auto-core | `POST /beta/feedback` | 40 | Send beta feedback | Send one useful feedback message from Tester HQ. |
 
 ## Auto-Live Missions
@@ -32,6 +32,7 @@ These have both backend route support and Android app hooks.
 
 | Mission ID suffix | Status | Event type | Points | Title | Description |
 | --- | --- | --- | ---: | --- | --- |
+| `open` | auto-live | `tester_hq_opened` | 15 | Open latest beta | Open Tester HQ in the current beta build. |
 | `test-main-flow` | auto-live | `main_flow_completed` | 50 | Test the main Remodex flow | Connect to your desktop session, send one message, and report if anything feels broken, slow, or confusing. |
 | `send-message` | auto-live | `message_sent` | 30 | Send one message | Send one normal prompt and confirm the assistant response starts in the timeline. |
 | `qr-pairing` | auto-live | `qr_pairing_completed` | 40 | Test QR pairing | Pair Android with the desktop bridge using QR and report scanner, permission, or connection issues. |

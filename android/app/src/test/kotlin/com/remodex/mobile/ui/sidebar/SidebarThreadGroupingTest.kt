@@ -3,6 +3,7 @@ package com.remodex.mobile.ui.sidebar
 import com.remodex.mobile.core.model.CodexThread
 import com.remodex.mobile.core.model.CodexThreadSyncState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
@@ -111,19 +112,49 @@ class SidebarThreadGroupingTest {
     }
 
     @Test
-    fun makeGroups_noProjectThreadsInCloudGroup() {
+    fun makeGroups_noProjectThreadsInChatsGroup() {
         val t1 = thread("t1", cwd = null)
-        val t2 = thread("t2", cwd = null)
+        val t2 = thread("t2", cwd = "Cloud")
         val all = listOf(t1, t2)
 
         val groups = SidebarThreadGrouping.makeGroups(all)
-        val cloudGroup =
+        val chatsGroup =
             groups.firstOrNull {
-                it.kind == SidebarThreadGroupKind.Project && it.projectPath == null
+                it.kind == SidebarThreadGroupKind.Chats && it.projectPath == null
             }
-        assertTrue(cloudGroup != null)
-        assertEquals("Cloud", cloudGroup?.label)
-        assertEquals(2, cloudGroup?.threads?.size)
+        assertTrue(chatsGroup != null)
+        assertEquals("Chats", chatsGroup?.label)
+        assertEquals(2, chatsGroup?.threads?.size)
+    }
+
+    @Test
+    fun makeGroups_bucketsAdHocCodexCwdsIntoChats() {
+        val adhoc = thread("t1", cwd = "/Users/test/Documents/Codex/2026-05-06/question")
+        val session = thread("t2", cwd = "/Users/test/.codex/sessions/2026/05/06/foo.jsonl")
+        val project = thread("t3", cwd = "/Users/test/project-a")
+
+        val groups = SidebarThreadGrouping.makeGroups(listOf(adhoc, session, project))
+        val chatsGroup = groups.first { it.kind == SidebarThreadGroupKind.Chats }
+        val projectGroups = groups.filter { it.kind == SidebarThreadGroupKind.Project }
+
+        assertEquals(listOf("t1", "t2").sorted(), chatsGroup.threads.map { it.id }.sorted())
+        assertEquals(1, projectGroups.size)
+        assertEquals("/Users/test/project-a", projectGroups.first().projectPath)
+    }
+
+    @Test
+    fun makeGroups_keepsWindowsProjectPathsInProjectGroups() {
+        val driveBackslash = thread("t1", cwd = "C:\\Users\\test\\project-a")
+        val driveSlash = thread("t2", cwd = "C:/Users/test/project-b")
+        val unc = thread("t3", cwd = "\\\\server\\share\\project-c")
+
+        val groups = SidebarThreadGrouping.makeGroups(listOf(driveBackslash, driveSlash, unc))
+        val projectPaths = groups.filter { it.kind == SidebarThreadGroupKind.Project }.map { it.projectPath }
+
+        assertTrue(projectPaths.contains("C:\\Users\\test\\project-a"))
+        assertTrue(projectPaths.contains("C:/Users/test/project-b"))
+        assertTrue(projectPaths.contains("\\\\server\\share\\project-c"))
+        assertFalse(groups.any { it.kind == SidebarThreadGroupKind.Chats })
     }
 
     @Test
@@ -145,5 +176,73 @@ class SidebarThreadGroupingTest {
         assertEquals("t1", projectGroup.threads.first().id)
         assertEquals(1, archivedGroup.threads.size)
         assertEquals("t2", archivedGroup.threads.first().id)
+    }
+
+    @Test
+    fun applyGroupLimit_capsVisibleThreadsAndReportsHiddenCount() {
+        val threads =
+            (1..7).map { i ->
+                thread(
+                    id = "t$i",
+                    cwd = "/Users/test/project-a",
+                    updatedAt = Instant.EPOCH.plusSeconds(i.toLong()),
+                )
+            }
+        val group = SidebarThreadGrouping.makeGroups(threads).first { it.kind == SidebarThreadGroupKind.Project }
+
+        val limited = SidebarThreadGrouping.applyGroupLimit(listOf(group), limit = 5).first()
+
+        assertEquals(listOf("t7", "t6", "t5", "t4", "t3"), limited.visibleThreads.map { it.id })
+        assertEquals(2, limited.hiddenCount)
+        assertEquals(7, limited.totalCount)
+        assertEquals(7, limited.threads.size)
+    }
+
+    @Test
+    fun applyGroupLimit_revealsAllWhenExpanded() {
+        val threads =
+            (1..7).map { i ->
+                thread(
+                    id = "t$i",
+                    cwd = "/Users/test/project-a",
+                    updatedAt = Instant.EPOCH.plusSeconds(i.toLong()),
+                )
+            }
+        val group = SidebarThreadGrouping.makeGroups(threads).first { it.kind == SidebarThreadGroupKind.Project }
+
+        val limited =
+            SidebarThreadGrouping.applyGroupLimit(
+                groups = listOf(group),
+                limit = 5,
+                expandedGroupIds = setOf(group.id),
+            ).first()
+
+        assertEquals(7, limited.visibleThreads.size)
+        assertEquals(0, limited.hiddenCount)
+    }
+
+    @Test
+    fun applyGroupLimit_pinsActiveThreadOutsideTopFive() {
+        val threads =
+            (1..7).map { i ->
+                thread(
+                    id = "t$i",
+                    cwd = "/Users/test/project-a",
+                    updatedAt = Instant.EPOCH.plusSeconds(i.toLong()),
+                )
+            }
+        val group = SidebarThreadGrouping.makeGroups(threads).first { it.kind == SidebarThreadGroupKind.Project }
+
+        val limited =
+            SidebarThreadGrouping.applyGroupLimit(
+                groups = listOf(group),
+                limit = 5,
+                pinnedThreadIds = setOf("t1"),
+            ).first()
+
+        assertTrue(limited.visibleThreads.map { it.id }.contains("t1"))
+        assertEquals(6, limited.visibleThreads.size)
+        assertEquals(1, limited.hiddenCount)
+        assertFalse(limited.visibleThreads.map { it.id }.contains("t2"))
     }
 }

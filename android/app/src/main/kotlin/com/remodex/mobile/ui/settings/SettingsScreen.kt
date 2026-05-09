@@ -64,6 +64,7 @@ import com.remodex.mobile.R
 import com.remodex.mobile.AppContainer
 import com.remodex.mobile.core.config.FeatureFlags
 import com.remodex.mobile.core.model.AppFontStyle
+import com.remodex.mobile.core.model.AppLanguagePreference
 import com.remodex.mobile.core.model.AppThemePreference
 import com.remodex.mobile.core.model.ContextWindowUsage
 import com.remodex.mobile.core.model.CodexRateLimitBucket
@@ -71,6 +72,7 @@ import com.remodex.mobile.core.notification.LocalNotificationSettings
 import com.remodex.mobile.core.transport.ConnectionState
 import com.remodex.mobile.data.AppFontPreferences
 import com.remodex.mobile.data.CodexRepository
+import com.remodex.mobile.data.LanguagePreferences
 import com.remodex.mobile.data.ThemePreferences
 import com.remodex.mobile.ui.shared.UsageStatusSummary
 import com.remodex.mobile.ui.theme.remodexScreenTopAppBarColors
@@ -90,6 +92,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val conn by repository.connectionState.collectAsStateWithLifecycle()
     var fontStyle by remember { mutableStateOf(AppFontPreferences.readFontStyle(context)) }
+    var languagePreference by remember { mutableStateOf(LanguagePreferences.read(context)) }
     var themePreference by remember { mutableStateOf(ThemePreferences.read(context)) }
     var localRelayHostOverride by remember {
         mutableStateOf(AppContainer.sessionPersistence.loadLocalRelayHostOverride().orEmpty())
@@ -156,6 +159,49 @@ fun SettingsScreen(
                         Text(text = option.title, style = MaterialTheme.typography.bodyLarge)
                         Text(
                             text = option.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.settings_language_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stringResource(R.string.settings_language_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            AppLanguagePreference.entries.forEach { option ->
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = option == languagePreference,
+                                onClick = {
+                                    languagePreference = option
+                                    LanguagePreferences.write(context, option)
+                                },
+                                role = Role.RadioButton,
+                            )
+                            .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = option == languagePreference,
+                        onClick = null,
+                    )
+                    Column(modifier = Modifier.padding(start = 8.dp)) {
+                        Text(
+                            text = stringResource(settingsLanguageTitleRes(option)),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            text = stringResource(settingsLanguageSubtitleRes(option)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -645,6 +691,18 @@ private fun settingsThemeSubtitleRes(option: AppThemePreference): Int =
         AppThemePreference.system -> R.string.settings_theme_system_subtitle
         AppThemePreference.light -> R.string.settings_theme_light_subtitle
         AppThemePreference.dark -> R.string.settings_theme_dark_subtitle
+    }
+
+private fun settingsLanguageTitleRes(option: AppLanguagePreference): Int =
+    when (option) {
+        AppLanguagePreference.english -> R.string.settings_language_english_title
+        AppLanguagePreference.system -> R.string.settings_language_system_title
+    }
+
+private fun settingsLanguageSubtitleRes(option: AppLanguagePreference): Int =
+    when (option) {
+        AppLanguagePreference.english -> R.string.settings_language_english_subtitle
+        AppLanguagePreference.system -> R.string.settings_language_system_subtitle
     }
 
 private fun readAppVersionName(context: Context): String =
