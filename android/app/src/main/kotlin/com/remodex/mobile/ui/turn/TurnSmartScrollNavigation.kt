@@ -79,15 +79,14 @@ internal fun buildSmartScrollNavigationState(
     val awayFromLatest = !isNearBottom
 
     val actions =
-        when {
-            awayFromLatest ->
-                buildList {
-                    previous?.let { add(SmartScrollAction(SMART_SCROLL_LABEL_PREV_USER, it.index)) }
-                    next?.let { add(SmartScrollAction(SMART_SCROLL_LABEL_NEXT_USER, it.index)) }
-                    add(SmartScrollAction(SMART_SCROLL_LABEL_LATEST, totalItemsCount - 1))
-                }
-            else ->
-                previous?.let { listOf(SmartScrollAction(SMART_SCROLL_LABEL_PREV_USER, it.index)) }.orEmpty()
+        if (awayFromLatest) {
+            buildList {
+                previous?.let { add(SmartScrollAction(SMART_SCROLL_LABEL_PREV_USER, it.index)) }
+                next?.let { add(SmartScrollAction(SMART_SCROLL_LABEL_NEXT_USER, it.index)) }
+                add(SmartScrollAction(SMART_SCROLL_LABEL_LATEST, totalItemsCount - 1))
+            }
+        } else {
+            emptyList()
         }
 
     return SmartScrollNavigationState(actions = actions.take(3))
