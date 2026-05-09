@@ -17,6 +17,9 @@
     <string name="thread_list_truncated">+%1$d more…</string>
     <string name="nav_settings">Settings</string>
     <string name="nav_tester_hq">Tester HQ</string>
+    <string name="sidebar_tester_hq_coachmark_title">Join Tester HQ</string>
+    <string name="sidebar_tester_hq_coachmark_body">Tap the trophy for beta missions, feedback, and the leaderboard.</string>
+    <string name="sidebar_tester_hq_coachmark_got_it">Got it</string>
     <string name="nav_reconnect">Reconnect</string>
     <string name="nav_reconnect_retry">Reconnect again</string>
     <string name="nav_reconnect_scan_new_qr">Scan new QR</string>

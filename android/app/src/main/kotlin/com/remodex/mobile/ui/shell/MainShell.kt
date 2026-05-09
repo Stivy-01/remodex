@@ -933,6 +933,7 @@ fun MainShell(
                     repository = repository,
                     navController = navController,
                     drawerScope = scope,
+                    drawerState = drawerState,
                     onOpenPairingScanner = onOpenPairingScanner,
                     onReconnectSavedPairing = viewModel::reconnectSavedPairingManually,
                     onWakeSavedComputer = viewModel::wakeSavedComputerDisplay,
