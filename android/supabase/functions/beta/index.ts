@@ -87,6 +87,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const action = routeAction(url);
 
+    if (req.method === "POST" && action === "recover") {
+      return json(await recover(req));
+    }
     if (req.method === "POST" && action === "register") {
       return json(await register(req));
     }
@@ -114,10 +117,54 @@ Deno.serve(async (req) => {
   }
 });
 
+async function recover(req: Request) {
+  const body = await readJson(req);
+  const deviceKey = requireDeviceKey(body.device_key);
+  const { data } = await assertOk(
+    supabase.from("beta_tester_devices").select("tester_id").eq("device_key", deviceKey).maybeSingle(),
+  );
+  if (!data?.tester_id) {
+    return { recovered: false };
+  }
+  return { recovered: true, profile: await profile(String(data.tester_id)) };
+}
+
 async function register(req: Request) {
   const body = await readJson(req);
-  const testerId = requireUuid(body.tester_id, "tester_id");
   const displayName = normalizeDisplayName(body.display_name);
+  const deviceKey = stringOrNull(body.device_key);
+
+  if (deviceKey && deviceKey.length >= 16) {
+    const { data: binding } = await assertOk(
+      supabase.from("beta_tester_devices").select("tester_id").eq("device_key", deviceKey).maybeSingle(),
+    );
+    if (binding?.tester_id) {
+      const tid = String(binding.tester_id);
+      if (displayName != null) {
+        await assertOk(
+          supabase.from("beta_testers").upsert(
+            {
+              id: tid,
+              display_name: displayName,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "id" },
+          ),
+        );
+      }
+      return profile(tid);
+    }
+  }
+
+  let testerId: string;
+  const rawId = body.tester_id;
+  if (rawId) {
+    testerId = requireUuid(rawId, "tester_id");
+  } else if (deviceKey && deviceKey.length >= 16) {
+    testerId = crypto.randomUUID();
+  } else {
+    throw new HttpError(400, "tester_id or device_key is required");
+  }
 
   await assertOk(
     supabase.from("beta_testers").upsert(
@@ -129,6 +176,19 @@ async function register(req: Request) {
       { onConflict: "id" },
     ),
   );
+
+  if (deviceKey && deviceKey.length >= 16) {
+    await assertOk(
+      supabase.from("beta_tester_devices").upsert(
+        {
+          device_key: deviceKey,
+          tester_id: testerId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "device_key" },
+      ),
+    );
+  }
 
   return profile(testerId);
 }
@@ -553,6 +613,14 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: jsonHeaders,
   });
+}
+
+function requireDeviceKey(value: unknown): string {
+  const text = stringOrEmpty(value);
+  if (text.length < 16) {
+    throw new HttpError(400, "device_key must be at least 16 characters");
+  }
+  return text.slice(0, 256);
 }
 
 function requireUuid(value: unknown, field: string): string {

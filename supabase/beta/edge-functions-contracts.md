@@ -12,12 +12,28 @@ Base URL is supplied to Android as `BETA_API_BASE_URL`; Android appends the path
 - Do not accept prompts, assistant output, local paths, relay session IDs, pairing identifiers, or logs.
 - Server decides points, mission completion, streak, rank, and duplicate handling.
 
+## POST `/beta/recover`
+
+Request:
+
+```json
+{
+  "device_key": "<sha256 hex of package|ANDROID_ID, min 16 chars>"
+}
+```
+
+Behavior:
+
+- Look up `beta_tester_devices.device_key`. If found, return `{ "recovered": true, "profile": { ... } }`.
+- If not found, return `{ "recovered": false }` (does **not** create a tester).
+
 ## POST `/beta/register`
 
 Request:
 
 ```json
 {
+  "device_key": "<sha256 hex, required from Android>",
   "tester_id": "00000000-0000-0000-0000-000000000000",
   "display_name": "Tester-042",
   "app_version": "0.1.0",
@@ -25,9 +41,13 @@ Request:
 }
 ```
 
+- `tester_id` optional when `device_key` is sent; server resolves by `device_key` first (reinstall / update continuity).
+- If no device binding exists, server creates a tester (new UUID when `tester_id` omitted) and upserts `beta_tester_devices`.
+
 Behavior:
 
 - Upsert `beta_testers.id`.
+- Bind `device_key` → `tester_id` in `beta_tester_devices` for stable recovery after reinstall.
 - Store `display_name` only when non-empty and at most 20 characters.
 - Return profile without private device information.
 

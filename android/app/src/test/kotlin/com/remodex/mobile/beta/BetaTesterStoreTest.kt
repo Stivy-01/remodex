@@ -39,6 +39,7 @@ class BetaTesterStoreTest {
                 idFactory = { "tester-id" },
             )
 
+        store.getOrCreateTesterId()
         store.markOptedIn("  abcdefghijklmnopqrstuvwxyz  ")
 
         val state = store.currentJoinState()

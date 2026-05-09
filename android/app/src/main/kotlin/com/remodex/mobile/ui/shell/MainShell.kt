@@ -54,6 +54,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.remodex.mobile.AppContainer
 import com.remodex.mobile.R
+import com.remodex.mobile.core.config.FeatureFlags
 import com.remodex.mobile.core.model.GitBranchesWithStatusResult
 import com.remodex.mobile.core.model.GitDiffTotals
 import com.remodex.mobile.core.model.GitRepoSyncResult
@@ -222,6 +223,9 @@ fun MainShell(
 
     LaunchedEffect(Unit) {
         viewModel.onAppLaunched()
+        if (FeatureFlags.betaEngagementEnabled) {
+            AppContainer.betaEngagementRepository.recoverBetaIdentityIfNeeded()
+        }
     }
 
     LaunchedEffect(ready) {
@@ -933,6 +937,7 @@ fun MainShell(
                     repository = repository,
                     navController = navController,
                     drawerScope = scope,
+                    drawerState = drawerState,
                     onOpenPairingScanner = onOpenPairingScanner,
                     onReconnectSavedPairing = viewModel::reconnectSavedPairingManually,
                     onWakeSavedComputer = viewModel::wakeSavedComputerDisplay,

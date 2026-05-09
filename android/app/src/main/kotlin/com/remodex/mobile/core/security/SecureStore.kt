@@ -88,13 +88,22 @@ class SecureStore(
                 MasterKey.Builder(context)
                     .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                     .build()
-            return EncryptedSharedPreferences.create(
-                context,
-                PREFS_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
+            fun openEncryptedPrefs(): SharedPreferences =
+                EncryptedSharedPreferences.create(
+                    context,
+                    PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+                )
+            return try {
+                openEncryptedPrefs()
+            } catch (_: Exception) {
+                // AEADBadTag / mac verification: prefs blob does not match current Keystore master key
+                // (restore from backup, reinstall/signing quirks, or corrupted file). Drop prefs once and recreate.
+                context.deleteSharedPreferences(PREFS_NAME)
+                openEncryptedPrefs()
+            }
         }
     }
 }

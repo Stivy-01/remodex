@@ -47,7 +47,16 @@ create unique index if not exists beta_events_unique_dedupe
   on beta_events(tester_id, event_type, dedupe_key)
   where dedupe_key is not null;
 
-create table if not exists beta_feedback (
+create table if not exists beta_tester_devices (
+  device_key text primary key check (char_length(device_key) >= 16),
+  tester_id uuid not null references beta_testers(id) on delete cascade,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now()
+);
+
+create index if not exists beta_tester_devices_tester_id_idx on beta_tester_devices(tester_id);
+
+-- RLS enabled with other tables below
   id uuid primary key default gen_random_uuid(),
   tester_id uuid not null references beta_testers(id) on delete cascade,
   type text not null check (
@@ -93,6 +102,7 @@ alter table beta_builds enable row level security;
 alter table beta_missions enable row level security;
 alter table beta_events enable row level security;
 alter table beta_feedback enable row level security;
+alter table beta_tester_devices enable row level security;
 
 -- Expected deployment model: Edge Functions use the service role key.
 -- Public table access should remain closed unless a separate read-only policy is intentionally added.
