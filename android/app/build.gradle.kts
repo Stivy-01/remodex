@@ -14,6 +14,10 @@ val keystoreProperties = Properties().apply {
         load(FileInputStream(keystorePropertiesFile))
     }
 }
+val hasReleaseSigning =
+    keystorePropertiesFile.exists() &&
+        listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+            .all { key -> !keystoreProperties.getProperty(key).isNullOrBlank() }
 
 fun betaConfigValue(name: String): String =
     (providers.gradleProperty(name).orNull ?: System.getenv(name) ?: "").trim()
@@ -35,7 +39,7 @@ android {
         applicationId = "com.remodex.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
         versionName = "0.1.1"
         buildConfigField("boolean", "BETA_ENABLED", betaEnabled.toString())
         buildConfigField("String", "BETA_API_BASE_URL", quotedBuildConfigString(betaApiBaseUrl))
@@ -43,14 +47,13 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            if (!keystorePropertiesFile.exists()) {
-                throw GradleException("Missing android/key.properties for release signing")
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
             }
-            storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
         }
     }
 
@@ -61,7 +64,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -83,6 +88,23 @@ android {
         resources {
             pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
+    }
+}
+
+gradle.taskGraph.whenReady {
+    val releasePackagingTaskRequested =
+        allTasks.any { task ->
+            task.project == project &&
+                task.name.endsWith("Release") &&
+                (
+                    task.name.startsWith("assemble") ||
+                        task.name.startsWith("bundle") ||
+                        task.name.startsWith("package")
+                )
+        }
+
+    if (releasePackagingTaskRequested && !hasReleaseSigning) {
+        throw GradleException("Missing android/key.properties for release signing")
     }
 }
 

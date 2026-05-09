@@ -9,6 +9,7 @@ import java.time.Instant
  */
 enum class SidebarThreadGroupKind {
     Project,
+    Chats,
     Archived,
 }
 
@@ -19,12 +20,18 @@ data class SidebarThreadGroup(
     val sortDate: Instant,
     val projectPath: String?,
     val threads: List<CodexThread>,
+    val visibleThreads: List<CodexThread> = threads,
+    val hiddenCount: Int = 0,
+    val totalCount: Int = threads.size,
 )
 
 object SidebarThreadGrouping {
+    private const val CHATS_GROUP_ID = "__chats__"
+
     fun makeGroups(threads: List<CodexThread>): List<SidebarThreadGroup> {
         val archivedThreads = threads.filter { it.syncState == CodexThreadSyncState.archivedLocal }
         val projectGroups = makeProjectGroups(threads = threads)
+        val chatsGroup = makeChatsGroup(threads = threads)
         val sortedArchived = sortThreadsByRecentActivity(archivedThreads)
         val archivedGroup =
             sortedArchived.firstOrNull()?.let { first ->
@@ -37,10 +44,39 @@ object SidebarThreadGrouping {
                     threads = sortedArchived,
                 )
             }
-        return if (archivedGroup != null) {
-            projectGroups + archivedGroup
-        } else {
-            projectGroups
+        return projectGroups + listOfNotNull(chatsGroup, archivedGroup)
+    }
+
+    fun applyGroupLimit(
+        groups: List<SidebarThreadGroup>,
+        limit: Int,
+        expandedGroupIds: Set<String> = emptySet(),
+        pinnedThreadIds: Set<String> = emptySet(),
+    ): List<SidebarThreadGroup> {
+        val safeLimit = limit.coerceAtLeast(0)
+        return groups.map { group ->
+            val expanded = group.id in expandedGroupIds
+            if (expanded || group.threads.size <= safeLimit) {
+                group.copy(
+                    visibleThreads = group.threads,
+                    hiddenCount = 0,
+                    totalCount = group.threads.size,
+                )
+            } else {
+                val head = group.threads.take(safeLimit)
+                val pinnedFromTail =
+                    if (pinnedThreadIds.isEmpty()) {
+                        emptyList()
+                    } else {
+                        group.threads.drop(safeLimit).filter { it.id in pinnedThreadIds }
+                    }
+                val visible = head + pinnedFromTail
+                group.copy(
+                    visibleThreads = visible,
+                    hiddenCount = group.threads.size - visible.size,
+                    totalCount = group.threads.size,
+                )
+            }
         }
     }
 
@@ -82,6 +118,7 @@ object SidebarThreadGrouping {
         val liveByProject = LinkedHashMap<String, MutableList<CodexThread>>()
         for (thread in threads) {
             if (thread.syncState == CodexThreadSyncState.archivedLocal) continue
+            if (thread.normalizedProjectPath == null) continue
             liveByProject.getOrPut(thread.projectKey) { mutableListOf() }.add(thread)
         }
         return liveByProject
@@ -93,6 +130,25 @@ object SidebarThreadGrouping {
                     else -> lhs.id.compareTo(rhs.id)
                 }
             }
+    }
+
+    private fun makeChatsGroup(threads: List<CodexThread>): SidebarThreadGroup? {
+        val chatThreads =
+            sortThreadsByRecentActivity(
+                threads.filter { thread ->
+                    thread.syncState != CodexThreadSyncState.archivedLocal &&
+                        thread.normalizedProjectPath == null
+                },
+            )
+        val first = chatThreads.firstOrNull() ?: return null
+        return SidebarThreadGroup(
+            id = CHATS_GROUP_ID,
+            label = "Chats",
+            kind = SidebarThreadGroupKind.Chats,
+            sortDate = first.updatedAt ?: first.createdAt ?: Instant.EPOCH,
+            projectPath = null,
+            threads = chatThreads,
+        )
     }
 
     private fun sortThreadsByRecentActivity(threads: List<CodexThread>): List<CodexThread> =

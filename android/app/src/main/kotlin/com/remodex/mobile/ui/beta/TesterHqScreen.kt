@@ -99,6 +99,11 @@ fun TesterHqScreen(
 
     LaunchedEffect(state.joinState.optedIn) {
         if (state.enabled && state.joinState.optedIn) {
+            repository.recordMissionEvent(
+                eventType = "tester_hq_opened",
+                screen = "tester_hq",
+                refreshAfter = false,
+            )
             repository.refreshHq(recordOpen = true)
         }
     }

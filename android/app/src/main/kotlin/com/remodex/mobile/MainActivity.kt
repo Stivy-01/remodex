@@ -13,7 +13,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.remodex.mobile.core.model.AppLanguagePreference
 import com.remodex.mobile.core.model.AppThemePreference
+import com.remodex.mobile.data.LanguagePreferences
 import com.remodex.mobile.data.ThemePreferences
 import com.remodex.mobile.core.notification.RemodexLocalNotificationPresenter
 import com.remodex.mobile.ui.LocalAIChangeSetPersistence
@@ -22,6 +24,10 @@ import com.remodex.mobile.ui.RootScreen
 import com.remodex.mobile.ui.theme.RemodexTheme
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(LanguagePreferences.wrapContext(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -40,6 +46,8 @@ class MainActivity : ComponentActivity() {
                     android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
                         if (key == AppThemePreference.storageKey) {
                             themePref = ThemePreferences.read(context)
+                        } else if (key == AppLanguagePreference.storageKey) {
+                            recreate()
                         }
                     }
                 prefs.registerOnSharedPreferenceChangeListener(listener)

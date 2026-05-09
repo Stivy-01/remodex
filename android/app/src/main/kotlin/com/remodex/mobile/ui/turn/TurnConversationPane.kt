@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.remodex.mobile.AppContainer
 import com.remodex.mobile.R
 import com.remodex.mobile.BuildConfig
 import com.remodex.mobile.core.model.AIChangeSet
@@ -1042,6 +1043,10 @@ fun TurnConversationPane(
                         collaborationMode = collaborationMode,
                     )
                 }.onSuccess {
+                    AppContainer.betaEngagementRepository.recordMissionEvent(
+                        eventType = "queued_draft_used",
+                        screen = "composer",
+                    )
                     draft = ""
                     composerAttachments = emptyList()
                     mentionChips = emptyList()
@@ -1065,6 +1070,32 @@ fun TurnConversationPane(
                 )
             }
                 .onSuccess {
+                    AppContainer.betaEngagementRepository.recordMissionEvent(
+                        eventType = "main_flow_completed",
+                        screen = "conversation",
+                    )
+                    AppContainer.betaEngagementRepository.recordMissionEvent(
+                        eventType = "message_sent",
+                        screen = "conversation",
+                    )
+                    if (collaborationMode == CodexCollaborationModeKind.plan) {
+                        AppContainer.betaEngagementRepository.recordMissionEvent(
+                            eventType = "plan_mode_used",
+                            screen = "composer",
+                        )
+                    }
+                    if (attachments.isNotEmpty()) {
+                        AppContainer.betaEngagementRepository.recordMissionEvent(
+                            eventType = "image_attachment_sent",
+                            screen = "composer",
+                        )
+                    }
+                    if (fileMentions.isNotEmpty()) {
+                        AppContainer.betaEngagementRepository.recordMissionEvent(
+                            eventType = "file_attachment_sent",
+                            screen = "composer",
+                        )
+                    }
                     sending = false
                     if (!fromQueue) {
                         draft = ""
@@ -1686,6 +1717,10 @@ fun TurnConversationPane(
                                             )
                                         if (isActive) {
                                             draft = VoiceDraftAppend.append(draft, text)
+                                            AppContainer.betaEngagementRepository.recordMissionEvent(
+                                                eventType = "voice_input_used",
+                                                screen = "composer",
+                                            )
                                         }
                                     } catch (e: CancellationException) {
                                         throw e
@@ -1750,6 +1785,14 @@ fun TurnConversationPane(
                     onRefreshGitBranches = { gitBranchReloadNonce++ },
                     onCheckoutGitBranch = onGitCheckout,
                     onCreateGitBranch = onGitCreateBranch,
+                    onOpenBranchSelector = {
+                        scope.launch {
+                            AppContainer.betaEngagementRepository.recordMissionEvent(
+                                eventType = "branch_selector_opened",
+                                screen = "branch_selector",
+                            )
+                        }
+                    },
                 )
             },
             onSend = {
@@ -1783,6 +1826,10 @@ fun TurnConversationPane(
                                 baseBranch = activeReviewBaseBranch,
                             )
                         }.onSuccess {
+                            AppContainer.betaEngagementRepository.recordMissionEvent(
+                                eventType = "review_flow_started",
+                                screen = "review",
+                            )
                             sending = false
                             draft = ""
                             mentionChips = emptyList()

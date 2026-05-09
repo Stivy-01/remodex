@@ -66,7 +66,7 @@ class ToolExecutionUiBuilderTest {
                 rawText = "",
             )
         val ui = buildToolExecutionUiPreview(preview, null, raw, ::title)
-        assertEquals("Test Gradle", ui.subtitle)
+        assertEquals("Gradle tests", ui.subtitle)
     }
 
     @Test
@@ -80,7 +80,7 @@ class ToolExecutionUiBuilderTest {
                 rawText = "",
             )
         val ui = buildToolExecutionUiPreview(preview, null, raw, ::title)
-        assertEquals("Stato Git", ui.subtitle)
+        assertEquals("Git status", ui.subtitle)
     }
 
     @Test

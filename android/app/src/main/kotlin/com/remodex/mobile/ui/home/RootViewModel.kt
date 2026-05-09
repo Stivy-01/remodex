@@ -203,6 +203,14 @@ class RootViewModel(
             onSuccess = {
                 trustedReconnectFailureBudget.reset()
                 _reconnectUiState.value = RootReconnectUiState()
+                if (attempt != RootReconnectAttempt.WakeDisplay) {
+                    viewModelScope.launch {
+                        AppContainer.betaEngagementRepository.recordMissionEvent(
+                            eventType = "reconnect_completed",
+                            screen = "connection",
+                        )
+                    }
+                }
             },
             onFailure = { error ->
                 val recoveryDecision = trustedReconnectFailureBudget.record(error)

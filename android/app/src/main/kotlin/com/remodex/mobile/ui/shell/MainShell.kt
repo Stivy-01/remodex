@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -51,6 +52,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.remodex.mobile.AppContainer
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.GitBranchesWithStatusResult
 import com.remodex.mobile.core.model.GitDiffTotals
@@ -110,6 +112,8 @@ fun MainShell(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val ready by repository.isSessionReady.collectAsStateWithLifecycle()
+    val currentReady by rememberUpdatedState(ready)
+    var backgroundedWhileReady by remember { mutableStateOf(false) }
     val activeThreadId by repository.activeThreadId.collectAsStateWithLifecycle()
     val threads by repository.threads.collectAsStateWithLifecycle()
     val runningTurnByThread by repository.runningTurnIdByThread.collectAsStateWithLifecycle()
@@ -191,8 +195,25 @@ fun MainShell(
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) {
-                    viewModel.onAppForegrounded()
+                when (event) {
+                    Lifecycle.Event.ON_STOP -> {
+                        if (currentReady) {
+                            backgroundedWhileReady = true
+                        }
+                    }
+                    Lifecycle.Event.ON_RESUME -> {
+                        viewModel.onAppForegrounded()
+                        if (backgroundedWhileReady) {
+                            backgroundedWhileReady = false
+                            scope.launch {
+                                AppContainer.betaEngagementRepository.recordMissionEvent(
+                                    eventType = "session_recovered_from_background",
+                                    screen = "conversation",
+                                )
+                            }
+                        }
+                    }
+                    else -> Unit
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)

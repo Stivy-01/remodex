@@ -115,6 +115,33 @@ data class BetaFeedbackResponse(
 )
 
 @Serializable
+data class BetaMissionEventRequest(
+    @SerialName("tester_id")
+    val testerId: String,
+    @SerialName("event_type")
+    val eventType: String,
+    @SerialName("app_version")
+    val appVersion: String,
+    @SerialName("device_model")
+    val deviceModel: String,
+    val screen: String? = null,
+)
+
+@Serializable
+data class BetaMissionEventResponse(
+    val success: Boolean,
+    @SerialName("event_type")
+    val eventType: String? = null,
+    @SerialName("mission_id")
+    val missionId: String? = null,
+    @SerialName("points_awarded")
+    val pointsAwarded: Int = 0,
+    @SerialName("total_score")
+    val totalScore: Int? = null,
+    val message: String? = null,
+)
+
+@Serializable
 data class BetaLeaderboardResponse(
     val profile: BetaTesterProfile,
     val rows: List<BetaLeaderboardRow> = emptyList(),

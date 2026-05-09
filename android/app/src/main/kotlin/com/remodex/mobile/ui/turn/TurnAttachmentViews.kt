@@ -268,7 +268,7 @@ private fun AttachmentImagePreviewDialog(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.TopEnd),
                 ) {
-                    Text(text = "Chiudi")
+                    Text(text = stringResource(R.string.turn_preview_close))
                 }
             }
         }

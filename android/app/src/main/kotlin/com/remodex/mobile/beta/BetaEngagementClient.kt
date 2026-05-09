@@ -21,6 +21,7 @@ interface BetaEngagementApi {
     ): BetaHqResponse
 
     suspend fun submitFeedback(request: BetaFeedbackRequest): BetaFeedbackResponse
+    suspend fun recordMissionEvent(request: BetaMissionEventRequest): BetaMissionEventResponse
     suspend fun fetchLeaderboard(
         testerId: String,
         appVersion: String,
@@ -55,6 +56,9 @@ class BetaEngagementClient(
 
     override suspend fun submitFeedback(request: BetaFeedbackRequest): BetaFeedbackResponse =
         post("beta/feedback", json.encodeToString(request))
+
+    override suspend fun recordMissionEvent(request: BetaMissionEventRequest): BetaMissionEventResponse =
+        post("beta/mission-event", json.encodeToString(request))
 
     override suspend fun fetchLeaderboard(
         testerId: String,

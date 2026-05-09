@@ -191,6 +191,11 @@ class BetaEngagementRepository(
             )
         }.fold(
             onSuccess = { leaderboard ->
+                recordMissionEvent(
+                    eventType = "leaderboard_refreshed",
+                    screen = "tester_hq",
+                    refreshAfter = false,
+                )
                 updateState {
                     copy(
                         leaderboardLoading = false,
@@ -206,6 +211,46 @@ class BetaEngagementRepository(
                         errorMessage = error.userVisibleBetaMessage(),
                     )
                 }
+            },
+        )
+    }
+
+    suspend fun recordMissionEvent(
+        eventType: String,
+        screen: String? = null,
+        refreshAfter: Boolean = true,
+    ): BetaMissionEventResponse? {
+        if (!enabled) return null
+        val betaApi = api ?: return null
+        val testerId = store.currentJoinState().testerId?.trim().orEmpty()
+        if (!store.currentJoinState().optedIn || testerId.isEmpty() || eventType.isBlank()) return null
+        return runCatching {
+            betaApi.recordMissionEvent(
+                BetaMissionEventRequest(
+                    testerId = testerId,
+                    eventType = eventType.trim(),
+                    appVersion = appVersionProvider(),
+                    deviceModel = deviceModelProvider(),
+                    screen = screen?.trim()?.takeIf { it.isNotEmpty() },
+                ),
+            )
+        }.fold(
+            onSuccess = { result ->
+                result.totalScore?.let { score ->
+                    updateState {
+                        copy(
+                            hq = hq?.copy(profile = hq.profile.copy(totalScore = score)),
+                            errorMessage = null,
+                        )
+                    }
+                }
+                if (refreshAfter && result.success) {
+                    refreshHq(recordOpen = false)
+                }
+                result
+            },
+            onFailure = {
+                null
             },
         )
     }

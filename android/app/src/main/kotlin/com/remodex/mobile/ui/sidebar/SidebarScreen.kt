@@ -61,10 +61,13 @@ import com.remodex.mobile.data.loadGitBranchesWithStatus
 import com.remodex.mobile.ui.shared.ThreadRenameDialog
 import kotlinx.coroutines.launch
 
+private const val SIDEBAR_THREADS_PER_GROUP = 5
+
 @Composable
 fun SidebarScreen(
     repository: CodexRepository,
     onOpenArchivedChats: () -> Unit = {},
+    onThreadSelected: suspend () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val threads by repository.threads.collectAsStateWithLifecycle()
@@ -97,14 +100,20 @@ fun SidebarScreen(
     var deleteLocalGroupBusy by remember { mutableStateOf(false) }
     var deleteLocalGroupError by remember { mutableStateOf<String?>(null) }
     var collapsedGroupIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var expandedGroupIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val filtered =
         remember(threads, query) {
             filterThreadsForSidebar(threads, query)
         }
     val groups =
-        remember(filtered) {
-            SidebarThreadGrouping.makeGroups(threads = filtered)
+        remember(filtered, expandedGroupIds, activeId) {
+            SidebarThreadGrouping.applyGroupLimit(
+                groups = SidebarThreadGrouping.makeGroups(threads = filtered),
+                limit = SIDEBAR_THREADS_PER_GROUP,
+                expandedGroupIds = expandedGroupIds,
+                pinnedThreadIds = listOfNotNull(activeId).toSet(),
+            )
         }
 
     fun startManagedWorktreeChat(
@@ -286,7 +295,7 @@ fun SidebarScreen(
                     )
                 }
                 items(
-                    items = if (group.id in collapsedGroupIds) emptyList() else group.threads,
+                    items = if (group.id in collapsedGroupIds) emptyList() else group.visibleThreads,
                     key = { it.id },
                 ) { thread ->
                     SidebarThreadRow(
@@ -296,7 +305,10 @@ fun SidebarScreen(
                             runningTurnByThread.containsKey(thread.id) ||
                                 protectedRunningFallback.contains(thread.id),
                         onSelect = {
-                            scope.launch { repository.setActiveThreadId(thread.id) }
+                            scope.launch {
+                                repository.setActiveThreadId(thread.id)
+                                onThreadSelected()
+                            }
                         },
                         onRenameRequest = {
                             renameTarget = thread
@@ -307,6 +319,27 @@ fun SidebarScreen(
                             deleteLocalError = null
                         },
                     )
+                }
+                if (group.id !in collapsedGroupIds &&
+                    (
+                        group.hiddenCount > 0 ||
+                            (group.id in expandedGroupIds && group.totalCount > SIDEBAR_THREADS_PER_GROUP)
+                    )
+                ) {
+                    item(key = "more-${group.id}") {
+                        SidebarGroupShowMoreRow(
+                            expanded = group.id in expandedGroupIds,
+                            totalCount = group.totalCount,
+                            onClick = {
+                                expandedGroupIds =
+                                    if (group.id in expandedGroupIds) {
+                                        expandedGroupIds - group.id
+                                    } else {
+                                        expandedGroupIds + group.id
+                                    }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -762,9 +795,37 @@ private fun SidebarGroupHeaderRow(
     }
 }
 
+@Composable
+private fun SidebarGroupShowMoreRow(
+    expanded: Boolean,
+    totalCount: Int,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(start = 32.dp, end = 10.dp, top = 5.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text =
+                if (expanded) {
+                    stringResource(R.string.sidebar_group_show_less)
+                } else {
+                    stringResource(R.string.sidebar_group_show_all, totalCount)
+                },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
 private fun SidebarThreadGroup.leadingIcon(): ImageVector =
     when (kind) {
         SidebarThreadGroupKind.Archived -> Icons.Outlined.Archive
+        SidebarThreadGroupKind.Chats -> Icons.Outlined.Cloud
         SidebarThreadGroupKind.Project -> {
             val t = threads.firstOrNull()
             when {
