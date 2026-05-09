@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.remodex.mobile.R
 import com.remodex.mobile.ui.theme.AgentLightColors
@@ -564,9 +565,11 @@ private fun LoadedGitBranchPill(
             )
             Text(
                 text = branchName,
+                modifier = Modifier.weight(1f, fill = false),
                 style = MaterialTheme.typography.labelMedium,
                 color = labelTint,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (isSwitchingBranch) {
                 CircularProgressIndicator(

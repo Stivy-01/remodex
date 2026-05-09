@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -245,28 +246,30 @@ internal fun TurnComposerSecondaryBar(
 
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.width(8.dp))
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier =
+                Modifier
+                    .weight(1f, fill = false)
+                    .widthIn(max = 160.dp),
+            contentAlignment = Alignment.CenterEnd,
         ) {
-            Box(modifier = Modifier.widthIn(max = 200.dp)) {
-                TurnGitBranchAccessory(
-                    state = gitBranchPaneState,
-                    branchPickerEnabled = branchPickerEnabled,
-                    isSwitchingBranch = isSwitchingGitBranch,
-                    onRefreshBranches = onRefreshGitBranches,
-                    onCheckoutBranch = onCheckoutGitBranch,
-                    onCreateBranch = onCreateGitBranch,
-                    onOpenBranchSelector = onOpenBranchSelector,
-                    compact = true,
-                )
-            }
-            TurnComposerUsageRing(
-                threadId = threadId,
-                repository = repository,
+            TurnGitBranchAccessory(
+                state = gitBranchPaneState,
+                branchPickerEnabled = branchPickerEnabled,
+                isSwitchingBranch = isSwitchingGitBranch,
+                onRefreshBranches = onRefreshGitBranches,
+                onCheckoutBranch = onCheckoutGitBranch,
+                onCreateBranch = onCreateGitBranch,
+                onOpenBranchSelector = onOpenBranchSelector,
+                compact = true,
             )
         }
+        Spacer(modifier = Modifier.width(8.dp))
+        TurnComposerUsageRing(
+            threadId = threadId,
+            repository = repository,
+        )
     }
 }
