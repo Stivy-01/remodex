@@ -3,6 +3,7 @@ package com.remodex.mobile.ui.turn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -540,46 +543,61 @@ private fun LoadedGitBranchPill(
         if (chrome) AgentLightColors.IconMuted else MaterialTheme.colorScheme.onSurfaceVariant
     val labelTint =
         if (chrome) AgentLightColors.TextSecondary else MaterialTheme.colorScheme.onSurfaceVariant
-    val baseMod =
+    val clickableMod =
         if (branchPickerEnabled) {
-            modifier.clickable(onClick = onOpenPicker)
+            Modifier.clickable(onClick = onOpenPicker)
         } else {
-            modifier
+            Modifier
         }
-    Surface(
-        shape = pillShape,
-        color = pillFill,
-        modifier = outlineMod.then(baseMod),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+    BoxWithConstraints(modifier = modifier) {
+        Surface(
+            shape = pillShape,
+            color = pillFill,
+            modifier =
+                outlineMod
+                    .then(clickableMod)
+                    .widthIn(max = maxWidth)
+                    .align(Alignment.CenterEnd),
         ) {
-            Icon(
-                imageVector = Icons.Outlined.AccountTree,
-                contentDescription = null,
-                modifier = Modifier.size(11.dp),
-                tint = glyphTint,
-            )
-            Text(
-                text = branchName,
-                style = MaterialTheme.typography.labelMedium,
-                color = labelTint,
-                maxLines = 1,
-            )
-            if (isSwitchingBranch) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(10.dp),
-                    strokeWidth = 2.dp,
-                )
-            } else {
+            Row(
+                modifier =
+                    Modifier
+                        .widthIn(max = maxWidth)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Icon(
-                    imageVector = Icons.Filled.ArrowDropDown,
+                    imageVector = Icons.Outlined.AccountTree,
                     contentDescription = null,
-                    modifier = Modifier.size(12.dp),
+                    modifier = Modifier.size(11.dp),
                     tint = glyphTint,
                 )
+                Text(
+                    text = branchName,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .widthIn(min = 0.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = labelTint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
+                if (isSwitchingBranch) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(10.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = glyphTint,
+                    )
+                }
             }
         }
     }

@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -245,10 +244,12 @@ internal fun TurnComposerSecondaryBar(
 
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .widthIn(min = 0.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.widthIn(max = 200.dp)) {
@@ -263,6 +264,19 @@ internal fun TurnComposerSecondaryBar(
                     compact = true,
                 )
             }
+            TurnGitBranchAccessory(
+                state = gitBranchPaneState,
+                branchPickerEnabled = branchPickerEnabled,
+                isSwitchingBranch = isSwitchingGitBranch,
+                onRefreshBranches = onRefreshGitBranches,
+                onCheckoutBranch = onCheckoutGitBranch,
+                onCreateBranch = onCreateGitBranch,
+                compact = true,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .widthIn(min = 0.dp),
+            )
             TurnComposerUsageRing(
                 threadId = threadId,
                 repository = repository,
