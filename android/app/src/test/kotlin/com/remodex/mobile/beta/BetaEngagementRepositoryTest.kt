@@ -21,6 +21,7 @@ class BetaEngagementRepositoryTest {
                     api = api,
                     appVersionProvider = { "0.1.0" },
                     deviceModelProvider = { "Pixel" },
+                    deviceKeyProvider = { "d".repeat(64) },
                 )
 
             repo.joinBeta("Tester")
@@ -93,26 +94,34 @@ private fun enabledRepo(api: TrackingBetaApi): BetaEngagementRepository =
         api = api,
         appVersionProvider = { "0.1.0" },
         deviceModelProvider = { "Pixel" },
+        deviceKeyProvider = { "k".repeat(64) },
     )
 
 private class TrackingBetaApi(
     private val failOpen: Boolean = false,
 ) : BetaEngagementApi {
+    var recoverCalls = 0
     var registerCalls = 0
     var openCalls = 0
     var hqCalls = 0
     var feedbackCalls = 0
     var leaderboardCalls = 0
 
+    override suspend fun recover(request: BetaRecoverRequest): BetaRecoverResponse {
+        recoverCalls++
+        return BetaRecoverResponse(recovered = false)
+    }
+
     override suspend fun register(request: BetaRegisterRequest): BetaTesterProfile {
         registerCalls++
-        return BetaTesterProfile(testerId = request.testerId, displayName = request.displayName)
+        val tid = request.testerId ?: "550e8400-e29b-41d4-a716-446655440000"
+        return BetaTesterProfile(testerId = tid, displayName = request.displayName)
     }
 
     override suspend fun recordOpen(request: BetaOpenRequest): BetaHqResponse {
         openCalls++
         if (failOpen) throw IOException("offline")
-        return hq(score = 42)
+        return hq(score = 42, testerId = request.testerId)
     }
 
     override suspend fun fetchHq(
@@ -120,7 +129,7 @@ private class TrackingBetaApi(
         appVersion: String,
     ): BetaHqResponse {
         hqCalls++
-        return hq(score = 82)
+        return hq(score = 82, testerId = testerId)
     }
 
     override suspend fun submitFeedback(request: BetaFeedbackRequest): BetaFeedbackResponse {
@@ -159,11 +168,17 @@ private class TrackingBetaApi(
         )
     }
 
-    private fun hq(score: Int): BetaHqResponse =
+    override suspend fun recordMissionEvent(request: BetaMissionEventRequest): BetaMissionEventResponse =
+        BetaMissionEventResponse(success = true)
+
+    private fun hq(
+        score: Int,
+        testerId: String,
+    ): BetaHqResponse =
         BetaHqResponse(
             profile =
                 BetaTesterProfile(
-                    testerId = "tester-id",
+                    testerId = testerId,
                     displayName = "Tester",
                     totalScore = score,
                     rank = 3,

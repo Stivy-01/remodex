@@ -1,6 +1,6 @@
 package com.remodex.mobile.ui.agent
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +33,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -49,6 +57,13 @@ import com.remodex.mobile.ui.navigation.AppRoutes
 import com.remodex.mobile.ui.sidebar.SidebarScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.max
+
+private data class TrophySpotlightPx(
+    val cx: Float,
+    val cy: Float,
+    val radiusPx: Float,
+)
 
 /**
  * Drawer sheet body: brand, search + threads (iOS-style list), footer links, Mac connection strip.
@@ -71,6 +86,28 @@ fun SidebarDrawerContent(
 ) {
     val scope = rememberCoroutineScope()
     var showTesterHqCoachmark by remember { mutableStateOf(false) }
+    var coachmarkRootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var trophyLayoutCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var trophySpotlightPx by remember { mutableStateOf<TrophySpotlightPx?>(null) }
+
+    LaunchedEffect(coachmarkRootCoords, trophyLayoutCoords, showTesterHqCoachmark) {
+        if (!showTesterHqCoachmark) {
+            trophySpotlightPx = null
+            return@LaunchedEffect
+        }
+        val root = coachmarkRootCoords
+        val trophy = trophyLayoutCoords
+        if (root == null || trophy == null || !root.isAttached || !trophy.isAttached) {
+            trophySpotlightPx = null
+            return@LaunchedEffect
+        }
+        val topLeft = root.localPositionOf(trophy)
+        val sz = trophy.size
+        val cx = topLeft.x + sz.width / 2f
+        val cy = topLeft.y + sz.height / 2f
+        val r = max(sz.width, sz.height) / 2f * 1.38f
+        trophySpotlightPx = TrophySpotlightPx(cx, cy, r)
+    }
 
     LaunchedEffect(drawerState.isOpen) {
         if (drawerState.isOpen &&
@@ -89,7 +126,8 @@ fun SidebarDrawerContent(
         modifier =
             modifier
                 .fillMaxHeight()
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .onGloballyPositioned { coachmarkRootCoords = it },
     ) {
         Column(
             modifier = Modifier.fillMaxHeight().fillMaxWidth(),
@@ -225,6 +263,7 @@ fun SidebarDrawerContent(
                                     navController.navigate(AppRoutes.TesterHq)
                                 }
                             },
+                            modifier = Modifier.onGloballyPositioned { trophyLayoutCoords = it },
                         ) {
                             Icon(
                                 painter = painterResource(LucideR.drawable.lucide_ic_trophy),
@@ -263,6 +302,7 @@ fun SidebarDrawerContent(
 
         if (showTesterHqCoachmark && FeatureFlags.betaEngagementEnabled) {
             SidebarTesterHqCoachmarkOverlay(
+                trophySpotlight = trophySpotlightPx,
                 onDismiss = { showTesterHqCoachmark = false },
             )
         }
@@ -276,19 +316,47 @@ private object SidebarTesterHqCoachmarkSession {
 
 @Composable
 private fun SidebarTesterHqCoachmarkOverlay(
+    trophySpotlight: TrophySpotlightPx?,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.48f)
+    val scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.48f)
     val shape = RoundedCornerShape(16.dp)
+    val ringWidth = 2.dp
+    val ringGap = 6.dp
 
     Box(modifier.fillMaxSize()) {
-        Box(
+        Canvas(
             Modifier
                 .fillMaxSize()
-                .background(scrim)
                 .clickable(onClick = onDismiss),
-        )
+        ) {
+            val spotlight = trophySpotlight
+            if (spotlight != null) {
+                val path =
+                    Path().apply {
+                        addRect(Rect(0f, 0f, size.width, size.height))
+                        val hole =
+                            Rect(
+                                spotlight.cx - spotlight.radiusPx,
+                                spotlight.cy - spotlight.radiusPx,
+                                spotlight.cx + spotlight.radiusPx,
+                                spotlight.cy + spotlight.radiusPx,
+                            )
+                        addOval(hole)
+                        fillType = PathFillType.EvenOdd
+                    }
+                drawPath(path, scrimColor)
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.45f),
+                    radius = spotlight.radiusPx + ringGap.toPx(),
+                    center = Offset(spotlight.cx, spotlight.cy),
+                    style = Stroke(width = ringWidth.toPx()),
+                )
+            } else {
+                drawRect(scrimColor)
+            }
+        }
         Surface(
             shape = shape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,

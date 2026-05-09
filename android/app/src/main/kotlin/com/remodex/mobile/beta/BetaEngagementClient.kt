@@ -13,6 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 interface BetaEngagementApi {
+    suspend fun recover(request: BetaRecoverRequest): BetaRecoverResponse
     suspend fun register(request: BetaRegisterRequest): BetaTesterProfile
     suspend fun recordOpen(request: BetaOpenRequest): BetaHqResponse
     suspend fun fetchHq(
@@ -35,6 +36,9 @@ class BetaEngagementClient(
     private val json: Json = BetaJson,
 ) : BetaEngagementApi {
     private val baseHttpUrl: HttpUrl = baseUrl.toHttpUrl()
+
+    override suspend fun recover(request: BetaRecoverRequest): BetaRecoverResponse =
+        post("beta/recover", json.encodeToString(request))
 
     override suspend fun register(request: BetaRegisterRequest): BetaTesterProfile =
         post("beta/register", json.encodeToString(request))

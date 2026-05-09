@@ -22,6 +22,7 @@ class BetaEngagementRepository(
     private val api: BetaEngagementApi?,
     private val appVersionProvider: () -> String,
     private val deviceModelProvider: () -> String,
+    private val deviceKeyProvider: () -> String,
 ) {
     private val _uiState =
         MutableStateFlow(
@@ -32,32 +33,54 @@ class BetaEngagementRepository(
         )
     val uiState: StateFlow<BetaHqUiState> = _uiState.asStateFlow()
 
+    suspend fun recoverBetaIdentityIfNeeded() {
+        if (!enabled) return
+        val betaApi = api ?: return
+        if (store.storedTesterId() != null) return
+        runCatching {
+            val res =
+                betaApi.recover(
+                    BetaRecoverRequest(deviceKey = deviceKeyProvider()),
+                )
+            if (!res.recovered || res.profile == null) return
+            store.restoreFromServerProfile(res.profile)
+            updateState {
+                copy(
+                    joinState = store.currentJoinState(),
+                    errorMessage = null,
+                )
+            }
+            refreshHq(recordOpen = false)
+        }
+    }
+
     suspend fun joinBeta(displayName: String? = null) {
         if (!enabled) return
         val betaApi = api ?: return
-        val testerId = store.getOrCreateTesterId()
         val name = BetaTesterStore.normalizedDisplayName(displayName)
-        store.markOptedIn(name)
+        val deviceKey = deviceKeyProvider()
         updateState {
             copy(
-                joinState = store.currentJoinState(),
                 loading = true,
                 errorMessage = null,
                 lastFeedbackResult = null,
             )
         }
         runCatching {
-            betaApi.register(
-                BetaRegisterRequest(
-                    testerId = testerId,
-                    displayName = name,
-                    appVersion = appVersionProvider(),
-                    deviceModel = deviceModelProvider(),
-                ),
-            )
+            val profile =
+                betaApi.register(
+                    BetaRegisterRequest(
+                        testerId = store.storedTesterId(),
+                        deviceKey = deviceKey,
+                        displayName = name,
+                        appVersion = appVersionProvider(),
+                        deviceModel = deviceModelProvider(),
+                    ),
+                )
+            store.restoreFromServerProfile(profile)
             betaApi.recordOpen(
                 BetaOpenRequest(
-                    testerId = testerId,
+                    testerId = profile.testerId,
                     appVersion = appVersionProvider(),
                     deviceModel = deviceModelProvider(),
                 ),

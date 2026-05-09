@@ -71,6 +71,16 @@ class BetaTesterStore(
             displayName = storage.getString(KEY_DISPLAY_NAME),
         )
 
+    fun storedTesterId(): String? =
+        storage.getString(KEY_TESTER_ID)?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** Persist canonical tester id + opt-in from server ([BetaTesterProfile]). */
+    fun restoreFromServerProfile(profile: BetaTesterProfile) {
+        storage.putString(KEY_TESTER_ID, profile.testerId.trim())
+        storage.putString(KEY_DISPLAY_NAME, normalizedDisplayName(profile.displayName))
+        storage.putBoolean(KEY_OPTED_IN, true)
+    }
+
     fun getOrCreateTesterId(): String {
         val existing = storage.getString(KEY_TESTER_ID)?.trim().orEmpty()
         if (existing.isNotEmpty()) return existing
@@ -80,7 +90,6 @@ class BetaTesterStore(
     }
 
     fun markOptedIn(displayName: String?) {
-        getOrCreateTesterId()
         storage.putBoolean(KEY_OPTED_IN, true)
         setDisplayName(displayName)
     }

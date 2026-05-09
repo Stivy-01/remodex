@@ -82,6 +82,18 @@ fun WhatsNewScreen(
                 title = stringResource(R.string.whats_new_bridge_title),
                 body = stringResource(R.string.whats_new_item_bridge),
             )
+            LocalInfoSection(
+                title = stringResource(R.string.whats_new_composer_git_title),
+                body = stringResource(R.string.whats_new_composer_git_item),
+            )
+            LocalInfoSection(
+                title = stringResource(R.string.whats_new_smart_scroll_title),
+                body = stringResource(R.string.whats_new_smart_scroll_item),
+            )
+            LocalInfoSection(
+                title = stringResource(R.string.whats_new_sidebar_settings_title),
+                body = stringResource(R.string.whats_new_sidebar_settings_item),
+            )
         }
     }
 }

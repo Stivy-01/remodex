@@ -72,13 +72,27 @@ data class BetaHqResponse(
 @Serializable
 data class BetaRegisterRequest(
     @SerialName("tester_id")
-    val testerId: String,
+    val testerId: String? = null,
+    @SerialName("device_key")
+    val deviceKey: String,
     @SerialName("display_name")
     val displayName: String? = null,
     @SerialName("app_version")
     val appVersion: String,
     @SerialName("device_model")
     val deviceModel: String,
+)
+
+@Serializable
+data class BetaRecoverRequest(
+    @SerialName("device_key")
+    val deviceKey: String,
+)
+
+@Serializable
+data class BetaRecoverResponse(
+    val recovered: Boolean,
+    val profile: BetaTesterProfile? = null,
 )
 
 @Serializable

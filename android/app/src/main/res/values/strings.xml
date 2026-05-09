@@ -379,6 +379,12 @@
     <string name="whats_new_item_streaming">Thread hydration and live streaming updates now merge more reliably into the active timeline.</string>
     <string name="whats_new_item_repo">Ignore rules were cleaned up so local build, index, Supabase temp, and signing files stay out of commits.</string>
     <string name="whats_new_item_bridge">Bundled bridge git handling was preserved with tests for safer local worktree and branch operations.</string>
+    <string name="whats_new_composer_git_title">Composer &amp; Git UI</string>
+    <string name="whats_new_composer_git_item">The branch picker pill shares the middle toolbar space with the usage ring: long branch names truncate with an ellipsis instead of overlapping the status indicator.bug found by eccentric</string>
+    <string name="whats_new_smart_scroll_title">Smart scroll</string>
+    <string name="whats_new_smart_scroll_item">The jump-to-latest control stays hidden when you are already at the newest message. bug found by eccentric</string>
+    <string name="whats_new_sidebar_settings_title">Sidebar &amp; settings</string>
+    <string name="whats_new_sidebar_settings_item">Clearer thread grouping in the drawer, app language preference in Settings, beta mission behavior fixes, and a one-time Tester HQ hint when you first open the sidebar each session (beta builds). merged PRs #2, #3, #5</string>
     <string name="nav_pairing_scan">Scan pairing QR</string>
     <string name="onboarding_title">Welcome to Remodex</string>
     <string name="onboarding_subtitle">Pair your phone with the Remodex bridge on your computer.</string>

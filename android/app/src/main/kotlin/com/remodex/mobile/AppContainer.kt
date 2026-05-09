@@ -102,6 +102,7 @@ object AppContainer {
                 api = betaApi,
                 appVersionProvider = { BetaDeviceInfo.appVersionName(app) },
                 deviceModelProvider = { BetaDeviceInfo.coarseDeviceModel() },
+                deviceKeyProvider = { BetaDeviceInfo.stableBetaDeviceKey(app) },
             )
     }
 }
