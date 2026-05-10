@@ -1,6 +1,7 @@
 package com.remodex.mobile.ui.turn
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -285,6 +286,11 @@ private fun ContextWindowStatusBlock(
             )
         }
         else -> {
+            LinearProgressIndicator(
+                progress = { usage.fractionUsed.toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(6.dp))
             Text(
                 text =
                     stringResource(
@@ -292,13 +298,8 @@ private fun ContextWindowStatusBlock(
                         usage.tokensUsedFormatted,
                         usage.tokenLimitFormatted,
                         usage.percentUsed,
-                    ),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(Modifier.height(6.dp))
-            LinearProgressIndicator(
-                progress = { usage.fractionUsed.toFloat().coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -318,18 +319,33 @@ private fun ThreadRuntimeStatusBlock(
         text = stringResource(R.string.turn_usage_runtime_title),
         style = MaterialTheme.typography.titleSmall,
     )
-    Text(
-        text = stringResource(if (connected) R.string.turn_usage_runtime_connected else R.string.turn_usage_runtime_disconnected),
-        style = MaterialTheme.typography.bodyMedium,
-    )
-    Text(
-        text = stringResource(if (sessionReady) R.string.turn_usage_runtime_ready else R.string.turn_usage_runtime_not_ready),
-        style = MaterialTheme.typography.bodyMedium,
-    )
-    Text(
-        text = stringResource(if (isThreadRunning) R.string.turn_usage_runtime_running else R.string.turn_usage_runtime_idle),
-        style = MaterialTheme.typography.bodyMedium,
-    )
+    val statusItems =
+        listOf(
+            stringResource(if (connected) R.string.turn_usage_runtime_connected else R.string.turn_usage_runtime_disconnected),
+            stringResource(if (sessionReady) R.string.turn_usage_runtime_ready else R.string.turn_usage_runtime_not_ready),
+            stringResource(if (isThreadRunning) R.string.turn_usage_runtime_running else R.string.turn_usage_runtime_idle),
+        )
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        if (maxWidth < 340.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                statusItems.forEach { RuntimeStatusCell(text = it) }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                statusItems.chunked(2).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        rowItems.forEach { RuntimeStatusCell(text = it, modifier = Modifier.weight(1f)) }
+                        if (rowItems.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (queuedDraftCount > 0) {
         Text(
             text = stringResource(R.string.turn_queue_pending_count, queuedDraftCount),
@@ -375,6 +391,25 @@ private fun ThreadRuntimeStatusBlock(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun RuntimeStatusCell(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

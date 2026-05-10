@@ -14,5 +14,5 @@ val RemodexShapes: Shapes =
         extraLarge = RoundedCornerShape(28.dp),
     )
 
-val RemodexComposerCapsuleShape: RoundedCornerShape = RoundedCornerShape(28.dp)
+val RemodexComposerCapsuleShape: RoundedCornerShape = RoundedCornerShape(24.dp)
 val RemodexToolbarIconShape: RoundedCornerShape = RoundedCornerShape(20.dp)

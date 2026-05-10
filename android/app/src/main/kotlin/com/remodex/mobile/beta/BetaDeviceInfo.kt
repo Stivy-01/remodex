@@ -12,13 +12,13 @@ object BetaDeviceInfo {
             val pm = context.packageManager
             val pkg = context.packageName
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0)).versionName ?: "0.1.0"
+                pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0)).versionName ?: "0.1.2"
             } else {
                 @Suppress("DEPRECATION")
-                pm.getPackageInfo(pkg, 0).versionName ?: "0.1.0"
+                pm.getPackageInfo(pkg, 0).versionName ?: "0.1.2"
             }
         } catch (_: Exception) {
-            "0.1.0"
+            "0.1.2"
         }
 
     fun coarseDeviceModel(): String {

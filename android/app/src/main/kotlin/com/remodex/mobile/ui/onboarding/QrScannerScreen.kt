@@ -34,7 +34,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,6 +55,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.remodex.mobile.AppContainer
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.CodexPairingQRPayload
@@ -73,6 +78,7 @@ fun QrScannerScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -83,23 +89,51 @@ fun QrScannerScreen(
     var bridgeUpdateVisible by remember { mutableStateOf(false) }
     var scanEnabled by remember { mutableStateOf(true) }
     var pendingPayload by remember { mutableStateOf<CodexPairingQRPayload?>(null) }
+    var scannerResetNonce by remember { mutableStateOf(0) }
 
     fun hasCameraPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
 
-    val permissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (!granted) {
-                errorMessage = context.getString(R.string.qr_scanner_camera_denied)
-            }
-        }
+    var cameraPermissionGranted by remember { mutableStateOf(hasCameraPermission()) }
 
     fun resetScanner() {
         pendingPayload = null
         scanEnabled = true
         statusMessage = null
         errorMessage = null
+        bridgeUpdateTitle = ""
+        bridgeUpdateMessage = ""
+        bridgeUpdateCommand = null
+        bridgeUpdateVisible = false
+        scannerResetNonce += 1
+    }
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            cameraPermissionGranted = granted || hasCameraPermission()
+            if (cameraPermissionGranted) {
+                resetScanner()
+            } else {
+                errorMessage = context.getString(R.string.qr_scanner_camera_denied)
+            }
+        }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    val granted = hasCameraPermission()
+                    cameraPermissionGranted = granted
+                    if (granted) {
+                        resetScanner()
+                    }
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     fun runConnect(payload: CodexPairingQRPayload) {
@@ -162,36 +196,39 @@ fun QrScannerScreen(
                         .clip(RoundedCornerShape(22.dp))
                         .background(Color(0xFF3B332C)),
             ) {
-                if (!hasCameraPermission()) {
+                if (!cameraPermissionGranted) {
                     PermissionPrompt(
                         onGrantCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                         modifier = Modifier.align(Alignment.Center),
                     )
                 } else {
                     if (scanEnabled && pendingPayload == null) {
-                        PairingQrScanner(
-                            modifier = Modifier.matchParentSize(),
-                            onDecodedPayload = { raw ->
-                                errorMessage = null
-                                when (val result = validatePairingQrCode(raw)) {
-                                    is QrPairingValidationResult.Success -> {
-                                        pendingPayload = result.payload
-                                        scanEnabled = false
-                                        runConnect(result.payload)
+                        key(scannerResetNonce) {
+                            PairingQrScanner(
+                                modifier = Modifier.matchParentSize(),
+                                onDecodedPayload = { raw ->
+                                    errorMessage = null
+                                    when (val result = validatePairingQrCode(raw)) {
+                                        is QrPairingValidationResult.Success -> {
+                                            pendingPayload = result.payload
+                                            scanEnabled = false
+                                            runConnect(result.payload)
+                                        }
+                                        is QrPairingValidationResult.ScanError -> {
+                                            scanEnabled = false
+                                            errorMessage = result.message
+                                        }
+                                        is QrPairingValidationResult.BridgeUpdateRequired -> {
+                                            scanEnabled = false
+                                            bridgeUpdateTitle = result.title
+                                            bridgeUpdateMessage = result.message
+                                            bridgeUpdateCommand = result.command
+                                            bridgeUpdateVisible = true
+                                        }
                                     }
-                                    is QrPairingValidationResult.ScanError -> {
-                                        errorMessage = result.message
-                                    }
-                                    is QrPairingValidationResult.BridgeUpdateRequired -> {
-                                        scanEnabled = false
-                                        bridgeUpdateTitle = result.title
-                                        bridgeUpdateMessage = result.message
-                                        bridgeUpdateCommand = result.command
-                                        bridgeUpdateVisible = true
-                                    }
-                                }
-                            },
-                        )
+                                },
+                            )
+                        }
                     }
                     QrScannerOverlay(
                         connecting = connecting,

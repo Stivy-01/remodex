@@ -573,6 +573,11 @@ private fun SettingsUsageRateLimitsSection(
                 )
             }
             usage?.let { u ->
+                LinearProgressIndicator(
+                    progress = { u.fractionUsed.toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text =
                         stringResource(
@@ -580,13 +585,8 @@ private fun SettingsUsageRateLimitsSection(
                             u.tokensUsedFormatted,
                             u.tokenLimitFormatted,
                             u.percentUsed,
-                        ),
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(4.dp))
-                LinearProgressIndicator(
-                    progress = { u.fractionUsed.toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -710,13 +710,13 @@ private fun readAppVersionName(context: Context): String =
         val pm = context.packageManager
         val pkg = context.packageName
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0)).versionName ?: "0.1.0"
+            pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0)).versionName ?: "0.1.2"
         } else {
             @Suppress("DEPRECATION")
-            pm.getPackageInfo(pkg, 0).versionName ?: "0.1.0"
+            pm.getPackageInfo(pkg, 0).versionName ?: "0.1.2"
         }
     } catch (_: Exception) {
-        "0.1.0"
+        "0.1.2"
     }
 
 private fun openSystemNotificationSettings(context: Context) {

@@ -10,13 +10,16 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -44,6 +47,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,6 +60,7 @@ import com.remodex.mobile.core.model.CodexCollaborationModeKind
 import com.remodex.mobile.core.model.CodexFileAttachment
 import com.remodex.mobile.core.model.CodexImageAttachment
 import com.remodex.mobile.core.model.CodexMessageKind
+import com.remodex.mobile.core.model.CodexMessageRole
 import com.remodex.mobile.core.model.CodexThread
 import com.remodex.mobile.core.error.CodexServiceError
 import com.remodex.mobile.core.model.GitBranchesWithStatusResult
@@ -108,8 +113,10 @@ private const val TIMELINE_LOAD_EARLIER_PAGE = 80
 private const val TIMELINE_STAGING_THRESHOLD = 72
 private const val STARTUP_TRACE_TAG = "RemodexStartup"
 private const val SMART_SCROLL_FADE_JUMP_DISTANCE_ITEMS = 24
+private const val BETA_LONG_THREAD_MESSAGE_THRESHOLD = 18
+private const val BETA_LONG_THREAD_SCROLL_DISTANCE_ITEMS = 6
+private val TurnConversationMessageListTopPadding = 112.dp
 /** Shaves a few dp off IME bottom padding so the composer sits slightly closer to the keyboard. */
-private val TurnConversationImeBottomTrim = 12.dp
 
 /**
  * Guscio conversazione: timeline + composer (testo, invio, allegati immagine).
@@ -153,7 +160,7 @@ fun TurnConversationPane(
     var lastError by remember { mutableStateOf<String?>(null) }
     var draft by rememberSaveable { mutableStateOf("") }
     var isPlanModeEnabled by rememberSaveable(threadId) { mutableStateOf(false) }
-    var planAccessoryExpanded by rememberSaveable(threadId) { mutableStateOf(false) }
+    var expandedPlanAccessoryMessageId by rememberSaveable(threadId) { mutableStateOf<String?>(null) }
     var composerAttachments by remember { mutableStateOf<List<TurnComposerAttachment>>(emptyList()) }
     var mentionChips by remember(threadId) { mutableStateOf<List<ComposerMentionChipPayload>>(emptyList()) }
     var availableSkills by remember(threadId) { mutableStateOf<List<SkillAutocompleteSuggestion>>(emptyList()) }
@@ -250,6 +257,10 @@ fun TurnConversationPane(
     val isThreadRunning =
         remember(threadId, runningTurnByThread, protectedRunningFallback) {
             runningTurnByThread.containsKey(threadId) || protectedRunningFallback.contains(threadId)
+        }
+    val activeTurnId =
+        remember(threadId, runningTurnByThread) {
+            runningTurnByThread[threadId]
         }
     val queuedDraftCount =
         remember(threadId, queuedDraftDepthByThread) {
@@ -647,7 +658,7 @@ fun TurnConversationPane(
         draft = ""
         composerAttachments = emptyList()
         mentionChips = emptyList()
-        planAccessoryExpanded = false
+        expandedPlanAccessoryMessageId = null
     }
 
     LaunchedEffect(threadId, voicePhase) {
@@ -732,8 +743,15 @@ fun TurnConversationPane(
         remember(messages) {
             selectPinnedPlanAccessoryMessage(messages)
         }
-    LaunchedEffect(pinnedPlanAccessoryMessage?.id) {
-        planAccessoryExpanded = false
+    val completedPlanAccessoryMessage =
+        remember(messages, pinnedPlanAccessoryMessage?.id) {
+            if (pinnedPlanAccessoryMessage == null) selectCompletedPlanAccessoryMessage(messages) else null
+        }
+    val visiblePlanAccessoryMessage = pinnedPlanAccessoryMessage ?: completedPlanAccessoryMessage
+    val expandedPlanAccessoryMessage =
+        visiblePlanAccessoryMessage?.takeIf { it.id == expandedPlanAccessoryMessageId }
+    LaunchedEffect(visiblePlanAccessoryMessage?.id) {
+        expandedPlanAccessoryMessageId = null
     }
     val fileAutocompleteCandidates =
         remember(messages) { com.remodex.mobile.ui.turn.extractThreadFileAutocompleteCandidates(messages) }
@@ -821,6 +839,10 @@ fun TurnConversationPane(
     var lastAutoScrollThreadId by remember { mutableStateOf<String?>(null) }
     var shouldAutoFollowBottom by rememberSaveable(threadId) { mutableStateOf(true) }
     var timelineContentVisible by remember(threadId) { mutableStateOf(true) }
+    var emittedStreamingResponseMission by rememberSaveable(threadId) { mutableStateOf(false) }
+    var emittedCommandCardMission by rememberSaveable(threadId) { mutableStateOf(false) }
+    var emittedFileChangeCardMission by rememberSaveable(threadId) { mutableStateOf(false) }
+    var emittedLongThreadScrollMission by rememberSaveable(threadId) { mutableStateOf(false) }
     val timelineContentAlpha by animateFloatAsState(
         targetValue = if (timelineContentVisible) 1f else 0.18f,
         label = "timeline-content-alpha",
@@ -895,6 +917,67 @@ fun TurnConversationPane(
                 if (isScrolling) {
                     shouldAutoFollowBottom = isAtBottom
                 }
+            }
+    }
+    LaunchedEffect(threadId, visibleMessages, emittedStreamingResponseMission) {
+        if (emittedStreamingResponseMission) return@LaunchedEffect
+        val streamingAssistantVisible =
+            visibleMessages.any { message ->
+                message.role == CodexMessageRole.assistant &&
+                    message.kind == CodexMessageKind.chat &&
+                    message.isStreaming
+            }
+        if (!streamingAssistantVisible) return@LaunchedEffect
+        emittedStreamingResponseMission = true
+        AppContainer.betaEngagementRepository.recordMissionEvent(
+            eventType = "streaming_response_seen",
+            screen = "conversation",
+            refreshAfter = false,
+        )
+    }
+    LaunchedEffect(threadId, visibleMessages, emittedCommandCardMission) {
+        if (emittedCommandCardMission) return@LaunchedEffect
+        val hasCommandCard =
+            visibleMessages.any { message ->
+                message.kind == CodexMessageKind.commandExecution
+            }
+        if (!hasCommandCard) return@LaunchedEffect
+        emittedCommandCardMission = true
+        AppContainer.betaEngagementRepository.recordMissionEvent(
+            eventType = "command_card_checked",
+            screen = "conversation",
+            refreshAfter = false,
+        )
+    }
+    LaunchedEffect(threadId, visibleMessages, emittedFileChangeCardMission) {
+        if (emittedFileChangeCardMission) return@LaunchedEffect
+        val hasFileChangeCard =
+            visibleMessages.any { message ->
+                message.kind == CodexMessageKind.fileChange
+            }
+        if (!hasFileChangeCard) return@LaunchedEffect
+        emittedFileChangeCardMission = true
+        AppContainer.betaEngagementRepository.recordMissionEvent(
+            eventType = "file_change_card_checked",
+            screen = "conversation",
+            refreshAfter = false,
+        )
+    }
+    LaunchedEffect(threadId, listState, messages.size, emittedLongThreadScrollMission) {
+        if (emittedLongThreadScrollMission || messages.size < BETA_LONG_THREAD_MESSAGE_THRESHOLD) return@LaunchedEffect
+        val initialIndex = listState.firstVisibleItemIndex
+        snapshotFlow { listState.firstVisibleItemIndex to listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { (firstIndex, isScrolling) ->
+                if (!isScrolling || emittedLongThreadScrollMission) return@collect
+                val scrolledEnough = kotlin.math.abs(firstIndex - initialIndex) >= BETA_LONG_THREAD_SCROLL_DISTANCE_ITEMS
+                if (!scrolledEnough) return@collect
+                emittedLongThreadScrollMission = true
+                AppContainer.betaEngagementRepository.recordMissionEvent(
+                    eventType = "scroll_long_thread_checked",
+                    screen = "conversation",
+                    refreshAfter = false,
+                )
             }
     }
     LaunchedEffect(latestMessageId, shouldFollowBottom) {
@@ -1138,79 +1221,107 @@ fun TurnConversationPane(
         )
     }
 
-    val imeBottomPad =
-        (WindowInsets.ime.asPaddingValues().calculateBottomPadding() - TurnConversationImeBottomTrim)
-            .coerceAtLeast(0.dp)
-    Column(
+    val imeBottomInset = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val navigationBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val isImeVisible = imeBottomInset > navigationBottomInset
+    Box(
         modifier =
             modifier
                 .fillMaxSize()
-                .padding(bottom = imeBottomPad),
     ) {
-        Box(
+        Column(
             modifier =
                 Modifier
-                    .weight(1f)
+                    .fillMaxSize()
                     .fillMaxWidth(),
         ) {
-            MessageList(
-                messages = visibleMessages,
-                listState = listState,
-                commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
-                onOpenFullMessage = { fullTimelineMessage = it },
-                hiddenEarlierCount = hiddenEarlierCount,
-                canLoadOlderRemoteHistory = canLoadOlderRemoteHistory,
-                isLoadingOlderHistory = isLoadingOlderHistory,
-                olderHistoryError = olderHistoryError,
-                onLoadEarlierMessages =
-                    if (hiddenEarlierCount > 0 || canLoadOlderRemoteHistory) {
-                        {
-                            if (canLoadOlderRemoteHistory && hiddenEarlierCount <= TIMELINE_LOAD_EARLIER_PAGE) {
-                                scope.launch { runCatching { repository.loadOlderThreadHistory(threadId) } }
-                            } else {
-                                visibleTailCount =
-                                    (visibleTailCount + TIMELINE_LOAD_EARLIER_PAGE)
-                                        .coerceAtMost(messages.size)
-                                if (BuildConfig.DEBUG) {
-                                    Log.d(
-                                        STARTUP_TRACE_TAG,
-                                        "timeline loadEarlier thread=$threadId visibleTail=$visibleTailCount total=${messages.size}",
-                                    )
+            Box(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+            ) {
+                MessageList(
+                    messages = visibleMessages,
+                    listState = listState,
+                    commandExecutionDetailsByItemId = commandExecutionDetailsByItemId,
+                    onOpenFullMessage = { fullTimelineMessage = it },
+                    isAssistantTurnActive = isThreadRunning,
+                    activeTurnId = activeTurnId,
+                    hiddenEarlierCount = hiddenEarlierCount,
+                    canLoadOlderRemoteHistory = canLoadOlderRemoteHistory,
+                    isLoadingOlderHistory = isLoadingOlderHistory,
+                    olderHistoryError = olderHistoryError,
+                    contentPadding =
+                        PaddingValues(
+                            top = TurnConversationMessageListTopPadding,
+                            bottom = 18.dp,
+                            start = 2.dp,
+                            end = 2.dp,
+                        ),
+                    onLoadEarlierMessages =
+                        if (hiddenEarlierCount > 0 || canLoadOlderRemoteHistory) {
+                            {
+                                if (canLoadOlderRemoteHistory && hiddenEarlierCount <= TIMELINE_LOAD_EARLIER_PAGE) {
+                                    scope.launch { runCatching { repository.loadOlderThreadHistory(threadId) } }
+                                } else {
+                                    visibleTailCount =
+                                        (visibleTailCount + TIMELINE_LOAD_EARLIER_PAGE)
+                                            .coerceAtMost(messages.size)
+                                    if (BuildConfig.DEBUG) {
+                                        Log.d(
+                                            STARTUP_TRACE_TAG,
+                                            "timeline loadEarlier thread=$threadId visibleTail=$visibleTailCount total=${messages.size}",
+                                        )
+                                    }
                                 }
                             }
+                        } else {
+                            null
+                        },
+                    assistantUndoChangeSetsByMessageId = assistantUndoChangeSetsByMessageId,
+                    applyingUndoChangeSetIds = applyingUndoChangeSetIds,
+                    onUndoAssistantChanges = { changeSet ->
+                        val workingDirectory = changeSet.repoRoot ?: activeThread?.cwd
+                        if (workingDirectory.isNullOrBlank()) {
+                            inlineUndoError = context.getString(R.string.turn_usage_revert_reason_missing_cwd)
+                            return@MessageList
                         }
-                    } else {
-                        null
-                    },
-                assistantUndoChangeSetsByMessageId = assistantUndoChangeSetsByMessageId,
-                applyingUndoChangeSetIds = applyingUndoChangeSetIds,
-                onUndoAssistantChanges = { changeSet ->
-                    val workingDirectory = changeSet.repoRoot ?: activeThread?.cwd
-                    if (workingDirectory.isNullOrBlank()) {
-                        inlineUndoError = context.getString(R.string.turn_usage_revert_reason_missing_cwd)
-                        return@MessageList
-                    }
-                    scope.launch {
-                        applyingUndoChangeSetIds = applyingUndoChangeSetIds + changeSet.id
-                        inlineUndoError = null
-                        runCatching {
-                            AiChangeSetRevertService(repository).apply(
-                                changeSet = changeSet,
-                                workingDirectory = workingDirectory,
-                            )
-                        }.onSuccess { applyResult ->
-                            if (applyResult.success) {
-                                aiChangeSetPersistence.save(
-                                    TurnUsageSheetLogic.markChangeSetReverted(
-                                        changeSets = aiChangeSetPersistence.load(),
-                                        changeSetId = changeSet.id,
-                                        now = Instant.now(),
-                                    ),
+                        scope.launch {
+                            applyingUndoChangeSetIds = applyingUndoChangeSetIds + changeSet.id
+                            inlineUndoError = null
+                            runCatching {
+                                AiChangeSetRevertService(repository).apply(
+                                    changeSet = changeSet,
+                                    workingDirectory = workingDirectory,
                                 )
-                            } else {
+                            }.onSuccess { applyResult ->
+                                if (applyResult.success) {
+                                    aiChangeSetPersistence.save(
+                                        TurnUsageSheetLogic.markChangeSetReverted(
+                                            changeSets = aiChangeSetPersistence.load(),
+                                            changeSetId = changeSet.id,
+                                            now = Instant.now(),
+                                        ),
+                                    )
+                                } else {
+                                    val message =
+                                        applyResult.unsupportedReasons.firstOrNull()
+                                            ?: applyResult.conflicts.firstOrNull()?.message
+                                            ?: context.getString(R.string.turn_message_action_undo_failed)
+                                    inlineUndoError = message
+                                    aiChangeSetPersistence.save(
+                                        TurnUsageSheetLogic.recordChangeSetRevertError(
+                                            changeSets = aiChangeSetPersistence.load(),
+                                            changeSetId = changeSet.id,
+                                            message = message,
+                                            now = Instant.now(),
+                                        ),
+                                    )
+                                }
+                            }.onFailure { error ->
                                 val message =
-                                    applyResult.unsupportedReasons.firstOrNull()
-                                        ?: applyResult.conflicts.firstOrNull()?.message
+                                    error.message?.ifBlank { null }
                                         ?: context.getString(R.string.turn_message_action_undo_failed)
                                 inlineUndoError = message
                                 aiChangeSetPersistence.save(
@@ -1222,76 +1333,62 @@ fun TurnConversationPane(
                                     ),
                                 )
                             }
-                        }.onFailure { error ->
-                            val message =
-                                error.message?.ifBlank { null }
-                                    ?: context.getString(R.string.turn_message_action_undo_failed)
-                            inlineUndoError = message
-                            aiChangeSetPersistence.save(
-                                TurnUsageSheetLogic.recordChangeSetRevertError(
-                                    changeSets = aiChangeSetPersistence.load(),
-                                    changeSetId = changeSet.id,
-                                    message = message,
-                                    now = Instant.now(),
-                                ),
+                            threadChangeSets =
+                                TurnUsageSheetLogic.recentChangeSetsForThread(
+                                    threadId,
+                                    aiChangeSetPersistence.load(),
+                                    limit = 50,
+                                )
+                            applyingUndoChangeSetIds = applyingUndoChangeSetIds - changeSet.id
+                        }
+                    },
+                    onForkThread = {
+                        showForkThreadSheet = true
+                        lastError = null
+                    },
+                    forkThreadEnabled =
+                        ready &&
+                            connectionState is ConnectionState.Connected &&
+                            !isThreadRunning &&
+                            !forkingThread,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .blur(timelineBlurRadius)
+                            .alpha(timelineContentAlpha),
+                )
+                SmartScrollNavigationCta(
+                    state = smartScrollNavigationState,
+                    onNavigate = { requestedIndex ->
+                        val targetIndex =
+                            requestedIndex.coerceIn(
+                                minimumValue = 0,
+                                maximumValue = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0),
                             )
+                        scope.launch {
+                            val distanceItems = kotlin.math.abs(targetIndex - listState.firstVisibleItemIndex)
+                            if (distanceItems >= SMART_SCROLL_FADE_JUMP_DISTANCE_ITEMS) {
+                                timelineContentVisible = false
+                                delay(90L)
+                                listState.scrollToItem(targetIndex)
+                                delay(120L)
+                                timelineContentVisible = true
+                            } else {
+                                listState.animateScrollToItem(targetIndex)
+                            }
+                            if (targetIndex >= (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) {
+                                shouldAutoFollowBottom = true
+                            } else {
+                                shouldAutoFollowBottom = false
+                            }
                         }
-                        threadChangeSets =
-                            TurnUsageSheetLogic.recentChangeSetsForThread(
-                                threadId,
-                                aiChangeSetPersistence.load(),
-                                limit = 50,
-                            )
-                        applyingUndoChangeSetIds = applyingUndoChangeSetIds - changeSet.id
-                    }
-                },
-                onForkThread = {
-                    showForkThreadSheet = true
-                    lastError = null
-                },
-                forkThreadEnabled =
-                    ready &&
-                        connectionState is ConnectionState.Connected &&
-                        !isThreadRunning &&
-                        !forkingThread,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .blur(timelineBlurRadius)
-                        .alpha(timelineContentAlpha),
-            )
-            SmartScrollNavigationCta(
-                state = smartScrollNavigationState,
-                onNavigate = { requestedIndex ->
-                    val targetIndex =
-                        requestedIndex.coerceIn(
-                            minimumValue = 0,
-                            maximumValue = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0),
-                    )
-                    scope.launch {
-                        val distanceItems = kotlin.math.abs(targetIndex - listState.firstVisibleItemIndex)
-                        if (distanceItems >= SMART_SCROLL_FADE_JUMP_DISTANCE_ITEMS) {
-                            timelineContentVisible = false
-                            delay(90L)
-                            listState.scrollToItem(targetIndex)
-                            delay(120L)
-                            timelineContentVisible = true
-                        } else {
-                            listState.animateScrollToItem(targetIndex)
-                        }
-                        if (targetIndex >= (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) {
-                            shouldAutoFollowBottom = true
-                        } else {
-                            shouldAutoFollowBottom = false
-                        }
-                    }
-                },
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 14.dp),
-            )
-        }
+                    },
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 14.dp),
+                )
+            }
         lastError?.let { err ->
             Text(
                 text = err,
@@ -1400,11 +1497,11 @@ fun TurnConversationPane(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             )
         }
-        pinnedPlanAccessoryMessage?.let { planMessage ->
+        visiblePlanAccessoryMessage?.let { planMessage ->
             TurnPlanAccessoryCard(
                 message = planMessage,
-                expanded = planAccessoryExpanded,
-                onToggleExpanded = { planAccessoryExpanded = !planAccessoryExpanded },
+                expanded = false,
+                onToggleExpanded = { expandedPlanAccessoryMessageId = planMessage.id },
                 canApplyPlan = !isThreadRunning && !sending,
                 onApplyPlan = { applyPlanToComposer() },
                 onOpenDetailsSheet = {
@@ -1754,46 +1851,48 @@ fun TurnConversationPane(
                 }
             },
             composerEnvironment = {
-                TurnComposerSecondaryBar(
-                    threadId = threadId,
-                    repository = repository,
-                    isWorktreeProject = activeThread?.isManagedWorktreeProject == true,
-                    worktreeHandoffEnabled =
-                        gitCwd != null &&
-                            gitBranchPaneState is GitBranchPaneState.Loaded &&
+                if (!isImeVisible) {
+                    TurnComposerSecondaryBar(
+                        threadId = threadId,
+                        repository = repository,
+                        isWorktreeProject = activeThread?.isManagedWorktreeProject == true,
+                        worktreeHandoffEnabled =
+                            gitCwd != null &&
+                                gitBranchPaneState is GitBranchPaneState.Loaded &&
+                                ready &&
+                                connectionState is ConnectionState.Connected &&
+                                !isThreadRunning &&
+                                !sending &&
+                                !isSwitchingGitBranch,
+                        isHandingOffWorktree = isHandingOffWorktree,
+                        onWorktreeHandoff = {
+                            showWorktreeHandoffSheet = true
+                            worktreeHandoffError = null
+                        },
+                        selectedAccessMode = selectedAccessMode,
+                        accessPickerEnabled =
                             ready &&
-                            connectionState is ConnectionState.Connected &&
-                            !isThreadRunning &&
-                            !sending &&
-                            !isSwitchingGitBranch,
-                    isHandingOffWorktree = isHandingOffWorktree,
-                    onWorktreeHandoff = {
-                        showWorktreeHandoffSheet = true
-                        worktreeHandoffError = null
-                    },
-                    selectedAccessMode = selectedAccessMode,
-                    accessPickerEnabled =
-                        ready &&
-                            !composerLocks.runtimeControlsLocked &&
-                            runtimeControls.accessMode.enabled,
-                    onSelectAccessMode = { mode ->
-                        scope.launch { runCatching { repository.setSelectedAccessMode(mode) } }
-                    },
-                    gitBranchPaneState = gitBranchPaneState,
-                    branchPickerEnabled = branchPickerEnabled,
-                    isSwitchingGitBranch = isSwitchingGitBranch,
-                    onRefreshGitBranches = { gitBranchReloadNonce++ },
-                    onCheckoutGitBranch = onGitCheckout,
-                    onCreateGitBranch = onGitCreateBranch,
-                    onOpenBranchSelector = {
-                        scope.launch {
-                            AppContainer.betaEngagementRepository.recordMissionEvent(
-                                eventType = "branch_selector_opened",
-                                screen = "branch_selector",
-                            )
-                        }
-                    },
-                )
+                                !composerLocks.runtimeControlsLocked &&
+                                runtimeControls.accessMode.enabled,
+                        onSelectAccessMode = { mode ->
+                            scope.launch { runCatching { repository.setSelectedAccessMode(mode) } }
+                        },
+                        gitBranchPaneState = gitBranchPaneState,
+                        branchPickerEnabled = branchPickerEnabled,
+                        isSwitchingGitBranch = isSwitchingGitBranch,
+                        onRefreshGitBranches = { gitBranchReloadNonce++ },
+                        onCheckoutGitBranch = onGitCheckout,
+                        onCreateGitBranch = onGitCreateBranch,
+                        onOpenBranchSelector = {
+                            scope.launch {
+                                AppContainer.betaEngagementRepository.recordMissionEvent(
+                                    eventType = "branch_selector_opened",
+                                    screen = "branch_selector",
+                                )
+                            }
+                        },
+                    )
+                }
             },
             onSend = {
                 transcribeJob?.cancel()
@@ -1864,6 +1963,27 @@ fun TurnConversationPane(
                 )
             },
         )
+        }
+        expandedPlanAccessoryMessage?.let { planMessage ->
+            TurnPlanAccessoryCard(
+                message = planMessage,
+                expanded = true,
+                onToggleExpanded = { expandedPlanAccessoryMessageId = null },
+                canApplyPlan = !isThreadRunning && !sending,
+                onApplyPlan = { applyPlanToComposer() },
+                onOpenDetailsSheet = {
+                    showPlanDetailsSheet = true
+                    lastError = null
+                },
+                floating = true,
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 18.dp, vertical = 24.dp)
+                        .widthIn(max = 560.dp)
+                        .zIndex(2f),
+            )
+        }
     }
     com.remodex.mobile.ui.turn.ForkThreadActionSheet(
         visible = showForkThreadSheet,
@@ -1916,7 +2036,7 @@ fun TurnConversationPane(
     )
     com.remodex.mobile.ui.turn.PlanDetailsActionSheet(
         visible = showPlanDetailsSheet,
-        message = pinnedPlanAccessoryMessage,
+        message = visiblePlanAccessoryMessage,
         canApplyPlan = !isThreadRunning && !sending,
         onDismiss = { showPlanDetailsSheet = false },
         onApplyPlan = {
@@ -1984,14 +2104,24 @@ private fun assistantUndoChangeSetsByMessageId(
             }
             .toMap()
     val byTurnId = readyChangeSets.associateBy { it.turnId }
-    return messages
+    val mapped =
+        messages
         .asSequence()
         .filter { it.role == com.remodex.mobile.core.model.CodexMessageRole.assistant }
         .mapNotNull { message ->
             val changeSet =
                 byAssistantMessageId[message.id]
+                    ?: message.itemId?.let { byAssistantMessageId[it] }
                     ?: message.turnId?.let { byTurnId[it] }
             changeSet?.let { message.id to it }
         }
         .toMap()
+    if (mapped.isNotEmpty()) return mapped
+    val latestAssistant = messages.lastOrNull { it.role == com.remodex.mobile.core.model.CodexMessageRole.assistant }
+    val latestReady = readyChangeSets.maxByOrNull { it.createdAt }
+    return if (latestAssistant != null && latestReady != null) {
+        mapOf(latestAssistant.id to latestReady)
+    } else {
+        emptyMap()
+    }
 }

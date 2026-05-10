@@ -1,21 +1,21 @@
 package com.remodex.mobile.ui.agent
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.LocalContentColor
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +35,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -51,7 +60,6 @@ import com.remodex.mobile.core.model.GitDiffTotals
 import com.remodex.mobile.core.model.TurnGitActionKind
 import com.remodex.mobile.ui.theme.AgentLightColors
 import com.remodex.mobile.ui.theme.RemodexGitAddition
-import com.remodex.mobile.ui.theme.RemodexToolbarIconShape
 import com.remodex.mobile.ui.theme.isAgentLightChrome
 
 /** Truncate long filesystem paths for the header subtitle (middle ellipsis). */
@@ -105,16 +113,34 @@ fun ConversationHeader(
     val showOverflow = showDesktopHandoff || showWorktreeHandoff || showTurnStop
     val diffCd = stringResource(R.string.cd_git_repo_diff_totals)
     val gitMenuCd = stringResource(R.string.cd_git_actions_menu)
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+    val chrome = isAgentLightChrome()
+    val pathColor =
+        if (chrome) {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.84f)
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f)
+        }
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(160.dp),
     ) {
+        HeaderAtmosphere(
+            lightChrome = chrome,
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .statusBarsPadding()
+                    .padding(top = 4.dp),
+        )
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(start = 14.dp, end = 10.dp, top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             Row(
@@ -175,12 +201,6 @@ fun ConversationHeader(
                 )
             }
             if (pathSubtitle != null && onPathClick != null) {
-                val pathColor =
-                    if (isAgentLightChrome()) {
-                        MaterialTheme.colorScheme.outlineVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
                 val pathSemanticsLabel = stringResource(R.string.turn_thread_path_dialog_title)
                 Row(
                     modifier =
@@ -230,42 +250,139 @@ fun ConversationHeader(
 }
 
 @Composable
-private fun HeaderMenuButton(onOpenDrawer: () -> Unit) {
-    val chrome = isAgentLightChrome()
-    val menuIconTint =
-        if (chrome) AgentLightColors.IconMuted else MaterialTheme.colorScheme.onSurface
-    IconButton(onClick = onOpenDrawer, modifier = Modifier.size(48.dp)) {
-        Surface(
-            shape = RemodexToolbarIconShape,
-            color =
-                if (chrome) {
-                    AgentLightColors.Surface.copy(alpha = 0.94f)
-                } else {
-                    MaterialTheme.colorScheme.surface
-                },
-            tonalElevation = if (chrome) 0.dp else 2.dp,
+private fun HeaderAtmosphere(
+    lightChrome: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val haze = if (lightChrome) Color(0xFF25282B) else Color.White
+    val hazeAlpha = if (lightChrome) 0.052f else 0.074f
+    val lowerHazeAlpha = if (lightChrome) 0.032f else 0.046f
+    val lineAlpha = if (lightChrome) 0.095f else 0.13f
+    Box(
+        modifier =
+            modifier
+                .clipToBounds(),
+    ) {
+        Canvas(
             modifier =
                 Modifier
-                    .size(36.dp)
-                    .then(
-                        if (chrome) {
-                            Modifier.border(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outline,
-                                shape = RemodexToolbarIconShape,
-                            )
-                        } else {
-                            Modifier
-                        },
+                    .matchParentSize()
+                    .blur(48.dp),
+        ) {
+            drawOval(
+                brush =
+                    Brush.radialGradient(
+                        colors = listOf(haze.copy(alpha = hazeAlpha), haze.copy(alpha = 0f)),
+                        center = Offset(size.width * 0.34f, size.height * 0.18f),
+                        radius = size.width * 0.50f,
                     ),
+                topLeft = Offset(size.width * -0.10f, size.height * -0.36f),
+                size = Size(size.width * 0.88f, size.height * 1.00f),
+            )
+            drawOval(
+                brush =
+                    Brush.radialGradient(
+                        colors = listOf(haze.copy(alpha = lowerHazeAlpha), haze.copy(alpha = 0f)),
+                        center = Offset(size.width * 0.78f, size.height * 0.22f),
+                        radius = size.width * 0.48f,
+                    ),
+                topLeft = Offset(size.width * 0.42f, size.height * -0.32f),
+                size = Size(size.width * 0.76f, size.height * 0.96f),
+            )
+        }
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val contour = Path().apply {
+                moveTo(size.width * 0.08f, size.height * 0.38f)
+                cubicTo(
+                    size.width * 0.25f,
+                    size.height * 0.31f,
+                    size.width * 0.43f,
+                    size.height * 0.39f,
+                    size.width * 0.58f,
+                    size.height * 0.34f,
+                )
+                cubicTo(
+                    size.width * 0.74f,
+                    size.height * 0.29f,
+                    size.width * 0.84f,
+                    size.height * 0.35f,
+                    size.width * 0.94f,
+                    size.height * 0.31f,
+                )
+            }
+            drawPath(
+                path = contour,
+                color = haze.copy(alpha = lineAlpha),
+                style = Stroke(width = 0.65.dp.toPx(), cap = StrokeCap.Round),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeaderMenuButton(onOpenDrawer: () -> Unit) {
+    HeaderFloatingIconButton(
+        onClick = onOpenDrawer,
+        contentDescription = stringResource(R.string.cd_open_navigation_drawer),
+    ) { tint ->
+        Icon(
+            painter = painterResource(LucideR.drawable.lucide_ic_menu),
+            contentDescription = null,
+            modifier = Modifier.size(21.dp),
+            tint = tint,
+        )
+    }
+}
+
+@Composable
+private fun HeaderFloatingIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentDescription: String? = null,
+    content: @Composable (Color) -> Unit,
+) {
+    val chrome = isAgentLightChrome()
+    val iconTint =
+        if (chrome) AgentLightColors.TextPrimary else MaterialTheme.colorScheme.onSurface
+    val fill =
+        if (chrome) {
+            AgentLightColors.Surface.copy(alpha = 0.91f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+        }
+    val border =
+        if (chrome) {
+            Color.White.copy(alpha = 0.58f)
+        } else {
+            Color.White.copy(alpha = 0.12f)
+        }
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier =
+            modifier
+                .size(56.dp)
+                .then(
+                    if (contentDescription != null) {
+                        Modifier.semantics { this.contentDescription = contentDescription }
+                    } else {
+                        Modifier
+                    },
+                ),
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = fill,
+            tonalElevation = if (chrome) 0.dp else 3.dp,
+            shadowElevation = if (chrome) 7.dp else 5.dp,
+            modifier =
+                Modifier
+                    .size(46.dp)
+                    .border(0.7.dp, border, CircleShape),
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(LucideR.drawable.lucide_ic_menu),
-                    contentDescription = stringResource(R.string.cd_open_navigation_drawer),
-                    modifier = Modifier.size(20.dp),
-                    tint = menuIconTint,
-                )
+                content(if (enabled) iconTint else iconTint.copy(alpha = 0.42f))
             }
         }
     }
@@ -352,20 +469,21 @@ private fun HeaderActions(
 
         if (showGitActions && onGitAction != null) {
             Box {
-                IconButton(
+                HeaderFloatingIconButton(
                     onClick = { onSetGitMenuExpanded(true) },
                     enabled = isGitActionEnabled && !gitActionsBusy,
-                    modifier = Modifier.semantics { contentDescription = gitMenuCd },
-                ) {
+                    contentDescription = gitMenuCd,
+                ) { tint ->
                     if (gitActionsBusy) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(21.dp),
                             strokeWidth = 2.dp,
+                            color = tint,
                         )
                     } else {
-                        Box(modifier = Modifier.size(24.dp)) {
+                        Box(modifier = Modifier.size(22.dp)) {
                             GitNodeConnectorIcon(
-                                tint = LocalContentColor.current,
+                                tint = tint,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -387,11 +505,15 @@ private fun HeaderActions(
 
         if (showOverflow) {
             Box {
-                IconButton(onClick = { onSetOverflowExpanded(true) }) {
+                HeaderFloatingIconButton(
+                    onClick = { onSetOverflowExpanded(true) },
+                    contentDescription = stringResource(R.string.turn_top_bar_thread_actions_cd),
+                ) { tint ->
                     Icon(
                         painter = painterResource(LucideR.drawable.lucide_ic_ellipsis_vertical),
-                        contentDescription = stringResource(R.string.turn_top_bar_thread_actions_cd),
-                        modifier = Modifier.size(20.dp),
+                        contentDescription = null,
+                        modifier = Modifier.size(21.dp),
+                        tint = tint,
                     )
                 }
                 DropdownMenu(

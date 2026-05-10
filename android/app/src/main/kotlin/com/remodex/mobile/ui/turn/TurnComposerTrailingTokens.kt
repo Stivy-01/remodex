@@ -45,12 +45,14 @@ internal object TurnComposerTrailingTokens {
         while (endExclusive > triggerIndex + 1 && text[endExclusive - 1].isTrailingMentionPunctuation()) {
             endExclusive--
         }
-        if (endExclusive != cappedCaret) return null
+        val hadTrailingPunctuation = endExclusive != cappedCaret
         val rawQuery = text.substring(triggerIndex + 1, endExclusive)
         val query = rawQuery.trim()
         if (query.isEmpty() || query.any { it == '\n' || it == '\r' }) return null
+        if (isReservedBareAtMention(query)) return null
         if (!rawQuery.all { it.isAllowedFileQueryChar() }) return null
         if (!isAllowedFileAutocompleteQuery(query) && !isBareLowercaseFileSearch(query)) return null
+        if (hadTrailingPunctuation && !isAllowedInlineFileMentionToken(query)) return null
         if (hasTrailingSentencePunctuation(query) && !isAllowedInlineFileMentionToken(query)) return null
         if (query.any { it.isWhitespace() } &&
             !query.contains('/') &&
@@ -81,6 +83,7 @@ internal object TurnComposerTrailingTokens {
         val triggerIndex = tokenStart + relativeTrigger
         val raw = text.substring(triggerIndex, cappedCaret)
         val query = raw.drop(1)
+        if (isReservedBareAtMention(query)) return null
         if (!query.all { it.isAllowedPluginQueryChar() }) return null
         if (query.isNotEmpty() && query.first().isUpperCase()) return null
         if (hasTrailingSentencePunctuation(query)) return null
@@ -146,6 +149,7 @@ internal object TurnComposerTrailingTokens {
         range: IntRange,
     ): TrailingComposerMentionParse? {
         val path = raw.drop(1)
+        if (isReservedBareAtMention(path)) return null
         if (!path.all { it.isAllowedFileQueryChar() }) return null
         if (!isAllowedFileAutocompleteQuery(path) && !isBareLowercaseFileSearch(path)) return null
         if (hasTrailingSentencePunctuation(path) && !isAllowedInlineFileMentionToken(path)) return null
@@ -302,6 +306,9 @@ internal object TurnComposerTrailingTokens {
             !trimmed.contains(':') &&
             trimmed.all { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '-' }
     }
+
+    private fun isReservedBareAtMention(query: String): Boolean =
+        query.equals("remodex", ignoreCase = true)
 
     private fun hasTrailingSentencePunctuation(query: String): Boolean =
         query.lastOrNull()?.let { it == ',' || it == '.' || it == ';' || it == ':' || it == '!' || it == '?' || it == ')' || it == ']' || it == '}' } == true

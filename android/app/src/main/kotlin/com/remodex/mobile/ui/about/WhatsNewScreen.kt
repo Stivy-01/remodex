@@ -90,10 +90,6 @@ fun WhatsNewScreen(
                 title = stringResource(R.string.whats_new_smart_scroll_title),
                 body = stringResource(R.string.whats_new_smart_scroll_item),
             )
-            LocalInfoSection(
-                title = stringResource(R.string.whats_new_sidebar_settings_title),
-                body = stringResource(R.string.whats_new_sidebar_settings_item),
-            )
         }
     }
 }

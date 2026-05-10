@@ -1,19 +1,23 @@
 package com.remodex.mobile.ui.turn
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,12 +29,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
 import com.remodex.mobile.R
+import com.remodex.mobile.ui.theme.isAgentLightChrome
 
-/** ~2/3 of typical 24.dp icon for footnote / unified chip leading icon. */
-internal val ComposerFootnoteIconDp = 16.dp
+/** Compact footnote / unified chip icon size. */
+internal val ComposerFootnoteIconDp = 13.dp
 
 internal fun compactModelStickerForUnifiedChip(option: TurnComposerRuntimeOption): String {
     val t = option.label.trim()
@@ -67,6 +73,7 @@ internal fun UnifiedComposerModelRuntimeChip(
     onSelectModel: (TurnComposerRuntimeOption) -> Unit,
     onSelectReasoningEffort: (TurnComposerRuntimeOption) -> Unit,
     onSelectServiceTier: (TurnComposerRuntimeOption) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -87,7 +94,6 @@ internal fun UnifiedComposerModelRuntimeChip(
 
     val canOpenMenu =
         enabled &&
-            modelState.enabled &&
             (hasModelChoice || toolbarHasSelectable)
 
     val firstSectionIsReasoning =
@@ -109,36 +115,51 @@ internal fun UnifiedComposerModelRuntimeChip(
     }
 
     Box {
-        FilterChip(
-            selected = false,
-            onClick = { if (canOpenMenu) expanded = true },
-            enabled = canOpenMenu,
-            modifier = Modifier.widthIn(max = 240.dp),
-            label = {
+        val lightChrome = isAgentLightChrome()
+        val showFastModeIcon = runtimeControls.serviceTier.selected.id != TURN_COMPOSER_RUNTIME_AUTO_ID
+        Surface(
+            modifier =
+                modifier
+                    .wrapContentWidth()
+                    .widthIn(max = 136.dp)
+                    .clickable(enabled = canOpenMenu) { expanded = true },
+            shape = RoundedCornerShape(999.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (lightChrome) 0.26f else 0.42f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    Icon(
-                        painter = painterResource(LucideR.drawable.lucide_ic_sparkles),
-                        contentDescription = null,
-                        modifier = Modifier.size(ComposerFootnoteIconDp),
-                    )
+                    if (showFastModeIcon) {
+                        Icon(
+                            painter = painterResource(LucideR.drawable.lucide_ic_zap),
+                            contentDescription = null,
+                            modifier = Modifier.size(ComposerFootnoteIconDp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(
                         text = unifiedModelRuntimeChipLabel(runtimeControls),
+                        modifier = Modifier.widthIn(max = 94.dp),
                         fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-            },
-            trailingIcon = {
                 Icon(
                     painter = painterResource(LucideR.drawable.lucide_ic_chevron_down),
                     contentDescription = null,
                     modifier = Modifier.size(ComposerFootnoteIconDp),
                 )
-            },
-        )
+            }
+        }
 
         DropdownMenu(
             expanded = expanded,
@@ -192,7 +213,7 @@ internal fun UnifiedComposerModelRuntimeChip(
                         expanded = false
                         onSelectModel(option)
                     },
-                    enabled = enabled && modelState.enabled && option.enabled,
+                    enabled = enabled && option.enabled,
                 )
             }
 

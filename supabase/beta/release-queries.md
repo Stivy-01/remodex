@@ -30,9 +30,13 @@ insert into beta_builds (
 values (
   '0.1.2',
   array[
-    'Added Tester HQ beta engagement flow',
-    'Improved mission and feedback tracking',
-    'Polished Android timeline behavior'
+    'Fixed hydration processes during qr failed scan and allow camera notification',
+    'Cleaner completed-turn chat layout with the final assistant summary kept in the main timeline',
+    'Plan mode now generates a plan card with gold shimmering expandable and consultable during plan execution',
+    'Activity details now contains intermediate assistant notes, tool calls, command output, file edits, and grouped work batches',
+    'Added subtle live shimmer states while the assistant is reading, editing, running checks, or applying patches',
+    'Improved grouping for consecutive command runs and file edits inside Activity details',
+    'Upgraded scroll UX for steadier jump controls, timeline fading, and long-chat navigation'
   ],
   array[
     'Open Tester HQ',
@@ -98,12 +102,57 @@ values
     true
   ),
   (
+    '0.1.2-test-main-flow',
+    '0.1.2',
+    'Test the main Remodex flow',
+    'Connect to your desktop session, send one message, and report if the completed chat view, Activity details, or live work states feel broken, slow, or confusing.',
+    50,
+    20,
+    true
+  ),
+  (
+    '0.1.2-streaming-response',
+    '0.1.2',
+    'Watch a streaming response',
+    'Send a request that produces a longer answer and check whether partial updates stream cleanly before the final summary remains in the main chat.',
+    35,
+    30,
+    true
+  ),
+  (
+    '0.1.2-scroll-long-thread',
+    '0.1.2',
+    'Test long-thread scrolling',
+    'Open a long conversation, scroll up and down, and verify jump controls, timeline fading, composer placement, and Activity details stay usable.',
+    25,
+    40,
+    true
+  ),
+  (
+    '0.1.2-command-card',
+    '0.1.2',
+    'Inspect command activity',
+    'Run a task with terminal output and verify command status, output, grouped command batches, and Activity details are readable.',
+    25,
+    50,
+    true
+  ),
+  (
+    '0.1.2-file-change-card',
+    '0.1.2',
+    'Inspect file-change activity',
+    'Run a safe task that produces a patch and verify file labels, grouped edit batches, and Activity details look correct.',
+    30,
+    60,
+    true
+  ),
+  (
     '0.1.2-feedback',
     '0.1.2',
     'Send beta feedback',
-    'Send one useful feedback message from Tester HQ.',
+    'Send one useful feedback message from Tester HQ after checking the 0.1.2 chat and scroll changes.',
     40,
-    20,
+    70,
     true
   )
 on conflict (id) do update set

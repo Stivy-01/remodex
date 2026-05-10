@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -25,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -93,11 +94,23 @@ internal fun TurnComposerSecondaryBar(
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         }
 
-    val envPillOutline: Modifier =
+    val envPillChrome: Modifier =
         if (agentLightChrome) {
-            Modifier.border(1.dp, MaterialTheme.colorScheme.outline, envPillShape)
-        } else {
             Modifier
+                .shadow(
+                    elevation = 8.dp,
+                    shape = envPillShape,
+                    ambientColor = Color.Black.copy(alpha = 0.06f),
+                    spotColor = Color.Black.copy(alpha = 0.06f),
+                )
+                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.42f), envPillShape)
+        } else {
+            Modifier.shadow(
+                elevation = 3.dp,
+                shape = envPillShape,
+                ambientColor = Color.Black.copy(alpha = 0.10f),
+                spotColor = Color.Black.copy(alpha = 0.10f),
+            )
         }
 
     val envLabelTint =
@@ -127,184 +140,167 @@ internal fun TurnComposerSecondaryBar(
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box {
-                Surface(
-                    shape = envPillShape,
-                    color = envPillBg,
-                    modifier =
-                        envPillOutline.clickable {
-                            runtimeMenuExpanded = true
-                        },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Icon(
-                            painter =
-                                if (isWorktreeProject) {
-                                    painterResource(LucideR.drawable.lucide_ic_git_branch)
-                                } else {
-                                    painterResource(LucideR.drawable.lucide_ic_laptop)
-                                },
-                            contentDescription = null,
-                            tint = envIconMuted,
-                            modifier = Modifier.size(ComposerFootnoteIconDp),
-                        )
-
-                        Text(
-                            text = runtimeTitle,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = envLabelTint,
-                        )
-
-                        Icon(
-                            painter = painterResource(LucideR.drawable.lucide_ic_chevron_down),
-                            contentDescription = null,
-                            tint = envIconMuted,
-                            modifier = Modifier.size(ComposerFootnoteIconDp),
-                        )
-                    }
-                }
-
-                DropdownMenu(
-                    expanded = runtimeMenuExpanded,
-                    onDismissRequest = { runtimeMenuExpanded = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.composer_runtime_menu_cloud)) },
-                        onClick = {
-                            runtimeMenuExpanded = false
-                            runCatching { uriHandler.openUri(codexCloudUrl) }
-                        },
-                        leadingIcon = {
-                            Icon(
-                                painter = painterResource(LucideR.drawable.lucide_ic_cloud),
-                                contentDescription = null,
-                            )
-                        },
-                    )
-
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    if (isHandingOffWorktree) {
-                                        R.string.composer_worktree_preparing
-                                    } else if (isWorktreeProject) {
-                                        R.string.composer_runtime_menu_handoff_local
-                                    } else {
-                                        R.string.composer_runtime_menu_worktree_handoff
-                                    },
-                                ),
-                            )
-                        },
-                        onClick = {
-                            runtimeMenuExpanded = false
-                            if (worktreeHandoffEnabled && !isHandingOffWorktree) {
-                                onWorktreeHandoff()
-                            }
-                        },
-                        enabled = worktreeHandoffEnabled && !isHandingOffWorktree,
-                    )
-
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.composer_runtime_menu_local_disabled)) },
-                        onClick = {},
-                        enabled = false,
-                    )
-                }
-            }
-
-            Box {
-                Surface(
-                    shape = envPillShape,
-                    color = envPillBg,
-                    modifier =
-                        envPillOutline.clickable(enabled = accessPickerEnabled) {
-                            if (accessPickerEnabled) {
-                                accessMenuExpanded = true
-                            }
-                        },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(accessIconRes),
-                            contentDescription = stringResource(R.string.turn_runtime_access_label),
-                            tint = accessIconTint,
-                            modifier = Modifier.size(ComposerFootnoteIconDp),
-                        )
-
-                        Icon(
-                            painter = painterResource(LucideR.drawable.lucide_ic_chevron_down),
-                            contentDescription = null,
-                            tint = envIconMuted,
-                            modifier = Modifier.size(ComposerFootnoteIconDp),
-                        )
-                    }
-                }
-
-                DropdownMenu(
-                    expanded = accessMenuExpanded,
-                    onDismissRequest = { accessMenuExpanded = false },
-                ) {
-                    CodexAccessMode.entries.forEach { mode ->
-                        DropdownMenuItem(
-                            text = { Text(mode.menuTitle) },
-                            onClick = {
-                                accessMenuExpanded = false
-                                onSelectAccessMode(mode)
-                            },
-                            enabled = accessPickerEnabled,
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Row(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .widthIn(min = 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
+        Box {
+            Surface(
+                shape = envPillShape,
+                color = envPillBg,
                 modifier =
-                    Modifier
-                        .weight(1f, fill = false)
-                        .widthIn(min = 0.dp, max = 160.dp),
-                contentAlignment = Alignment.CenterEnd,
+                    envPillChrome.clickable {
+                        runtimeMenuExpanded = true
+                    },
             ) {
-                TurnGitBranchAccessory(
-                    state = gitBranchPaneState,
-                    branchPickerEnabled = branchPickerEnabled,
-                    isSwitchingBranch = isSwitchingGitBranch,
-                    onRefreshBranches = onRefreshGitBranches,
-                    onCheckoutBranch = onCheckoutGitBranch,
-                    onCreateBranch = onCreateGitBranch,
-                    onOpenBranchSelector = onOpenBranchSelector,
-                    compact = true,
+                Row(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(
+                        painter =
+                            if (isWorktreeProject) {
+                                painterResource(LucideR.drawable.lucide_ic_git_branch)
+                            } else {
+                                painterResource(LucideR.drawable.lucide_ic_laptop)
+                            },
+                        contentDescription = null,
+                        tint = envIconMuted,
+                        modifier = Modifier.size(ComposerFootnoteIconDp),
+                    )
+
+                    Text(
+                        text = runtimeTitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = envLabelTint,
+                        maxLines = 1,
+                    )
+
+                    Icon(
+                        painter = painterResource(LucideR.drawable.lucide_ic_chevron_down),
+                        contentDescription = null,
+                        tint = envIconMuted,
+                        modifier = Modifier.size(ComposerFootnoteIconDp),
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = runtimeMenuExpanded,
+                onDismissRequest = { runtimeMenuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.composer_runtime_menu_cloud)) },
+                    onClick = {
+                        runtimeMenuExpanded = false
+                        runCatching { uriHandler.openUri(codexCloudUrl) }
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(LucideR.drawable.lucide_ic_cloud),
+                            contentDescription = null,
+                        )
+                    },
+                )
+
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(
+                                if (isHandingOffWorktree) {
+                                    R.string.composer_worktree_preparing
+                                } else if (isWorktreeProject) {
+                                    R.string.composer_runtime_menu_handoff_local
+                                } else {
+                                    R.string.composer_runtime_menu_worktree_handoff
+                                },
+                            ),
+                        )
+                    },
+                    onClick = {
+                        runtimeMenuExpanded = false
+                        if (worktreeHandoffEnabled && !isHandingOffWorktree) {
+                            onWorktreeHandoff()
+                        }
+                    },
+                    enabled = worktreeHandoffEnabled && !isHandingOffWorktree,
+                )
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.composer_runtime_menu_local_disabled)) },
+                    onClick = {},
+                    enabled = false,
                 )
             }
+        }
 
-            TurnComposerUsageRing(
-                threadId = threadId,
-                repository = repository,
+        Box(contentAlignment = Alignment.CenterEnd) {
+            TurnGitBranchAccessory(
+                state = gitBranchPaneState,
+                branchPickerEnabled = branchPickerEnabled,
+                isSwitchingBranch = isSwitchingGitBranch,
+                onRefreshBranches = onRefreshGitBranches,
+                onCheckoutBranch = onCheckoutGitBranch,
+                onCreateBranch = onCreateGitBranch,
+                onOpenBranchSelector = onOpenBranchSelector,
+                compact = true,
+                modifier = Modifier.widthIn(max = 190.dp),
             )
         }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Box {
+            Surface(
+                shape = envPillShape,
+                color = envPillBg,
+                modifier =
+                    envPillChrome.clickable(enabled = accessPickerEnabled) {
+                        if (accessPickerEnabled) {
+                            accessMenuExpanded = true
+                        }
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(accessIconRes),
+                        contentDescription = stringResource(R.string.turn_runtime_access_label),
+                        tint = accessIconTint,
+                        modifier = Modifier.size(ComposerFootnoteIconDp),
+                    )
+
+                    Icon(
+                        painter = painterResource(LucideR.drawable.lucide_ic_chevron_down),
+                        contentDescription = null,
+                        tint = envIconMuted,
+                        modifier = Modifier.size(ComposerFootnoteIconDp),
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = accessMenuExpanded,
+                onDismissRequest = { accessMenuExpanded = false },
+            ) {
+                CodexAccessMode.entries.forEach { mode ->
+                    DropdownMenuItem(
+                        text = { Text(mode.menuTitle) },
+                        onClick = {
+                            accessMenuExpanded = false
+                            onSelectAccessMode(mode)
+                        },
+                        enabled = accessPickerEnabled,
+                    )
+                }
+            }
+        }
+
+        TurnComposerUsageRing(
+            threadId = threadId,
+            repository = repository,
+        )
     }
 }

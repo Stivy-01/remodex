@@ -11,8 +11,8 @@ private const val TIMELINE_ASSISTANT_CHUNK_MIN_CHARS = 1_600
 
 /**
  * Flat timeline row or a consecutive run of [CodexMessageKind.commandExecution] /
- * [CodexMessageKind.fileChange] (system) that was folded because the run length is **greater than**
- * [TIMELINE_TOOL_GROUP_THRESHOLD] (i.e. 4+ messages).
+ * [CodexMessageKind.fileChange] (system) that was folded because the run length reaches
+ * [TIMELINE_TOOL_GROUP_THRESHOLD].
  */
 internal sealed interface TimelineListItem {
     val stableKey: String
@@ -65,6 +65,8 @@ internal sealed interface TimelineListItem {
  */
 internal fun List<CodexMessage>.toTimelineListItems(
     collapseLatestTurn: Boolean = true,
+    activeTurnId: String? = null,
+    collapseAssistantWork: Boolean = true,
 ): List<TimelineListItem> {
     if (isEmpty()) return emptyList()
     val visibleMessages =
@@ -90,7 +92,7 @@ internal fun List<CodexMessage>.toTimelineListItems(
                 }
             }
             val run = visibleMessages.subList(i, j + 1).toList()
-            if (run.size > TIMELINE_TOOL_GROUP_THRESHOLD) {
+            if (run.size >= TIMELINE_TOOL_GROUP_THRESHOLD) {
                 when (kind) {
                     CodexMessageKind.commandExecution ->
                         out += TimelineListItem.CommandExecutionGroup(run)
@@ -112,15 +114,94 @@ internal fun List<CodexMessage>.toTimelineListItems(
             i++
         }
     }
-    val latestTurnId =
-        if (collapseLatestTurn) {
-            null
-        } else {
-            visibleMessages
-                .lastOrNull { !it.turnId.isNullOrBlank() }
-                ?.turnId
-        }
-    return out.collapseAssistantWorkGroups(excludedTurnId = latestTurnId)
+    if (!collapseAssistantWork) return out
+    val excludedTurnId = activeTurnId?.trim()?.takeIf { it.isNotEmpty() }
+    return out.collapseAssistantWorkGroups(
+        excludedTurnId = excludedTurnId,
+        excludeLatestTurn = excludedTurnId == null && !collapseLatestTurn,
+    )
+}
+
+internal fun List<CodexMessage>.toActivityDetailTimelineListItems(): List<TimelineListItem> =
+    toTimelineListItems(collapseAssistantWork = false)
+
+internal fun List<CodexMessage>.deriveTransientActivityStatus(
+    isThreadRunning: Boolean,
+    activeTurnId: String? = null,
+): String? {
+    if (!isThreadRunning) return null
+    val activeMessages = activeTurnMessages(activeTurnId)
+    if (activeMessages.any { it.role == CodexMessageRole.assistant && it.kind == CodexMessageKind.chat && it.isStreaming }) {
+        return null
+    }
+    val latest = activeMessages.lastOrNull() ?: return "thinking..."
+    return when {
+        latest.role == CodexMessageRole.user -> "thinking..."
+        latest.role == CodexMessageRole.assistant -> null
+        latest.kind == CodexMessageKind.fileChange -> fileChangeStatus(latest.text)
+        latest.kind == CodexMessageKind.commandExecution -> commandExecutionStatus(latest.text)
+        latest.kind == CodexMessageKind.thinking -> "thinking..."
+        latest.role == CodexMessageRole.system -> "working..."
+        else -> null
+    }
+}
+
+private fun List<CodexMessage>.activeTurnMessages(activeTurnId: String?): List<CodexMessage> {
+    val turnId = activeTurnId?.trim()?.takeIf { it.isNotEmpty() }
+    if (turnId != null) {
+        val byTurn = filter { it.turnId == turnId }
+        if (byTurn.isNotEmpty()) return byTurn
+    }
+    val latestUserIndex = indexOfLast { it.role == CodexMessageRole.user }
+    return if (latestUserIndex >= 0) {
+        drop(latestUserIndex)
+    } else {
+        this
+    }
+}
+
+private fun fileChangeStatus(text: String): String {
+    val normalized = text.lowercase()
+    if ("patch" in normalized || "apply_patch" in normalized) return "applying patch..."
+    val filename =
+        text.lineSequence()
+            .map { it.trim().trim('-', '*').trim() }
+            .firstOrNull { it.contains('.') || it.contains('/') || it.contains('\\') }
+            ?.let(::compactTimelinePath)
+            ?.takeIf { it.isNotBlank() }
+    return if (filename != null) {
+        "editing $filename..."
+    } else {
+        "editing files..."
+    }
+}
+
+private fun commandExecutionStatus(text: String): String {
+    val command = normalizedCommandText(text)
+    return when {
+        Regex("""\b(apply_patch|patch|edit|write_file|workspace_?edit)\b""").containsMatchIn(command) ->
+            "applying patch..."
+        Regex("""\b(test|check|compile|build|gradlew|xcodebuild|pytest|jest|vitest|kotlinc|tsc)\b""").containsMatchIn(command) ->
+            "running checks..."
+        Regex("""\b(git\s+status|git\s+diff|diff|status)\b""").containsMatchIn(command) ->
+            "checking changes..."
+        Regex("""\b(cat|nl|head|tail|sed|less|more|rg|grep|ag|ack|ls|find|fd|read_file|view_file|search)\b""")
+            .containsMatchIn(command) ->
+            "thinking..."
+        else -> "working..."
+    }
+}
+
+private fun normalizedCommandText(text: String): String =
+    text.trim()
+        .replace(Regex("""^(running|completed|complete|ran|failed|stopped|error)\s*>?\s*""", RegexOption.IGNORE_CASE), "")
+        .lowercase()
+
+private fun compactTimelinePath(path: String): String {
+    val trimmed = path.trim().trim('"', '\'')
+    val withoutStats = trimmed.replace(Regex("""\s*[+\uFF0B]\s*\d+\s*[-\u2212\u2013\u2014\uFE63\uFF0D]\s*\d+\s*$"""), "")
+    val normalized = withoutStats.replace('\\', '/').trimEnd('/')
+    return normalized.substringAfterLast('/').ifBlank { normalized }
 }
 
 private fun CodexMessage.toAssistantTimelineChunks(): List<TimelineListItem.MessageChunk>? {
@@ -187,27 +268,22 @@ internal fun splitAssistantMarkdownForTimeline(text: String): List<String> {
     return chunks.filter { it.isNotBlank() }.ifEmpty { listOf(text) }
 }
 
-private fun List<TimelineListItem>.collapseAssistantWorkGroups(excludedTurnId: String?): List<TimelineListItem> {
+private fun List<TimelineListItem>.collapseAssistantWorkGroups(
+    excludedTurnId: String?,
+    excludeLatestTurn: Boolean,
+): List<TimelineListItem> {
     if (size < 2) return this
-    val turnItems =
-        mapIndexedNotNull { index, item ->
-            val messages = item.timelineMessages()
-            val turnId = messages.firstNotNullOfOrNull { it.turnId?.takeIf(String::isNotBlank) }
-                ?: return@mapIndexedNotNull null
-            IndexedTurnItem(
-                index = index,
-                turnId = turnId,
-                item = item,
-                messages = messages,
-            )
-        }
+    val turnItems = indexedTurnItems()
+    val excludedTurnKey =
+        excludedTurnId?.let { "turn:$it" }
+            ?: if (excludeLatestTurn) turnItems.lastOrNull()?.turnKey else null
     val hiddenIndexes = mutableSetOf<Int>()
     val workGroupsByInsertIndex = mutableMapOf<Int, TimelineListItem.AssistantWorkGroup>()
     turnItems
-        .groupBy { it.turnId }
+        .groupBy { it.turnKey }
         .values
         .forEach { itemsForTurn ->
-            if (itemsForTurn.firstOrNull()?.turnId == excludedTurnId) return@forEach
+            if (itemsForTurn.firstOrNull()?.turnKey == excludedTurnKey) return@forEach
             val finalAssistantMessage = itemsForTurn.lastAssistantChatMessageOrNull() ?: return@forEach
             if (finalAssistantMessage.isStreaming) return@forEach
             val hiddenItems =
@@ -220,7 +296,7 @@ private fun List<TimelineListItem>.collapseAssistantWorkGroups(excludedTurnId: S
             val workMessages = hiddenItems.flatMap { it.messages }
             workGroupsByInsertIndex[hiddenItems.first().index] =
                 TimelineListItem.AssistantWorkGroup(
-                    groupKey = "assistant-work-${itemsForTurn.first().turnId}",
+                    groupKey = "assistant-work-${itemsForTurn.first().groupKey}",
                     messages = workMessages,
                 )
         }
@@ -237,10 +313,44 @@ private fun List<TimelineListItem>.collapseAssistantWorkGroups(excludedTurnId: S
 
 private data class IndexedTurnItem(
     val index: Int,
-    val turnId: String,
+    val turnKey: String,
+    val groupKey: String,
     val item: TimelineListItem,
     val messages: List<CodexMessage>,
 )
+
+private fun List<TimelineListItem>.indexedTurnItems(): List<IndexedTurnItem> {
+    val out = ArrayList<IndexedTurnItem>(size)
+    var fallbackGroupKey: String? = null
+    forEachIndexed { index, item ->
+        val messages = item.timelineMessages()
+        messages.firstOrNull { it.role == CodexMessageRole.user }?.let { userMessage ->
+            fallbackGroupKey = "user-${userMessage.id}"
+        }
+        val turnId = messages.firstNotNullOfOrNull { it.turnId?.takeIf(String::isNotBlank) }
+        val groupKey =
+            if (turnId != null) {
+                turnId
+            } else {
+                fallbackGroupKey ?: return@forEachIndexed
+            }
+        val turnKey =
+            if (turnId != null) {
+                "turn:$turnId"
+            } else {
+                "fallback:$groupKey"
+            }
+        out +=
+            IndexedTurnItem(
+                index = index,
+                turnKey = turnKey,
+                groupKey = groupKey,
+                item = item,
+                messages = messages,
+            )
+    }
+    return out
+}
 
 private fun List<IndexedTurnItem>.lastAssistantChatMessageOrNull(): CodexMessage? =
     asReversed()

@@ -43,10 +43,18 @@ class TimelineMessageGroupingTest {
         )
 
     @Test
-    fun upToThreeCommands_remainSingles() {
-        val items = listOf(cmd("a"), cmd("b"), cmd("c")).toTimelineListItems()
-        assertEquals(3, items.size)
+    fun upToTwoCommands_remainSingles() {
+        val items = listOf(cmd("a"), cmd("b")).toTimelineListItems()
+        assertEquals(2, items.size)
         assertTrue(items.all { it is TimelineListItem.Single })
+    }
+
+    @Test
+    fun threeCommands_becomeOneGroup() {
+        val items = listOf(cmd("a"), cmd("b"), cmd("c")).toTimelineListItems()
+        assertEquals(1, items.size)
+        val group = assertIs<TimelineListItem.CommandExecutionGroup>(items.single())
+        assertEquals(listOf("a", "b", "c"), group.messages.map { it.id })
     }
 
     @Test
@@ -240,6 +248,128 @@ class TimelineMessageGroupingTest {
     }
 
     @Test
+    fun assistantWorkGroup_doesNotCollapseActiveTurnBeforeCompletion() {
+        fun assistant(id: String, seconds: Long): CodexMessage =
+            CodexMessage(
+                id = id,
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = id,
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+        fun turnCommand(id: String, seconds: Long): CodexMessage =
+            cmd(id).copy(
+                createdAt = t0.plusSeconds(seconds),
+                turnId = "turn-1",
+            )
+
+        val items =
+            listOf(
+                assistant("step-1", 0),
+                turnCommand("cmd-1", 10),
+                assistant("step-2", 20),
+            ).toTimelineListItems(
+                collapseLatestTurn = false,
+                activeTurnId = "turn-1",
+            )
+
+        assertEquals(3, items.size)
+        assertTrue(items.all { it is TimelineListItem.Single })
+    }
+
+    @Test
+    fun assistantWorkGroup_usesUserSegmentWhenTurnIdIsMissingAfterCompletion() {
+        val user =
+            CodexMessage(
+                id = "prompt",
+                threadId = "t1",
+                role = CodexMessageRole.user,
+                kind = CodexMessageKind.chat,
+                text = "prompt",
+                createdAt = t0,
+            )
+        val step =
+            CodexMessage(
+                id = "step",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = "step",
+                createdAt = t0.plusSeconds(1),
+            )
+        val final =
+            CodexMessage(
+                id = "final",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = "final",
+                createdAt = t0.plusSeconds(2),
+            )
+
+        val items = listOf(user, step, final).toTimelineListItems()
+
+        assertEquals(3, items.size)
+        assertIs<TimelineListItem.Single>(items[0]).also { assertEquals("prompt", it.message.id) }
+        assertIs<TimelineListItem.AssistantWorkGroup>(items[1]).also {
+            assertEquals("assistant-work-user-prompt", it.stableKey)
+            assertEquals(listOf("step"), it.messages.map { message -> message.id })
+        }
+        assertIs<TimelineListItem.Single>(items[2]).also { assertEquals("final", it.message.id) }
+    }
+
+    @Test
+    fun assistantWorkGroup_doesNotCollapseLatestTurnWithoutTurnIdWhileActive() {
+        val user =
+            CodexMessage(
+                id = "prompt",
+                threadId = "t1",
+                role = CodexMessageRole.user,
+                kind = CodexMessageKind.chat,
+                text = "prompt",
+                createdAt = t0,
+            )
+        val step =
+            CodexMessage(
+                id = "step",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = "step",
+                createdAt = t0.plusSeconds(1),
+            )
+        val latest =
+            CodexMessage(
+                id = "latest",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = "latest",
+                createdAt = t0.plusSeconds(2),
+            )
+
+        val items = listOf(user, step, latest).toTimelineListItems(collapseLatestTurn = false)
+
+        assertEquals(3, items.size)
+        assertTrue(items.all { it is TimelineListItem.Single })
+    }
+
+    @Test
+    fun activityDetailsPreserveCommandGrouping() {
+        val details =
+            listOf(
+                cmd("a"),
+                cmd("b"),
+                cmd("c"),
+            ).toActivityDetailTimelineListItems()
+
+        val group = assertIs<TimelineListItem.CommandExecutionGroup>(details.single())
+        assertEquals(listOf("a", "b", "c"), group.messages.map { it.id })
+    }
+
+    @Test
     fun assistantWorkGroup_keepsLastAssistantMessageEvenWhenToolArrivesAfterIt() {
         fun assistant(id: String, seconds: Long): CodexMessage =
             CodexMessage(
@@ -304,5 +434,60 @@ class TimelineMessageGroupingTest {
         assertEquals(2, items.size)
         assertIs<TimelineListItem.Single>(items[0]).also { assertEquals("c1", it.message.id) }
         assertIs<TimelineListItem.Single>(items[1]).also { assertEquals("f1", it.message.id) }
+    }
+
+    @Test
+    fun transientActivityStatus_hidesWhileAssistantTextStreams() {
+        val streaming =
+            CodexMessage(
+                id = "as",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = "streaming",
+                createdAt = t0,
+                turnId = "turn-1",
+                isStreaming = true,
+            )
+
+        val status =
+            listOf(streaming).deriveTransientActivityStatus(
+                isThreadRunning = true,
+                activeTurnId = "turn-1",
+            )
+
+        assertEquals(null, status)
+    }
+
+    @Test
+    fun transientActivityStatus_derivesToolStates() {
+        val checks =
+            cmd("compile").copy(
+                text = "running > ./gradlew test",
+                turnId = "turn-1",
+            )
+        val diff =
+            cmd("diff").copy(
+                text = "running > git diff",
+                turnId = "turn-1",
+            )
+        val edit =
+            file("edit").copy(
+                text = "android/app/src/main/kotlin/MainShell.kt +1 -1",
+                turnId = "turn-1",
+            )
+
+        assertEquals(
+            "running checks...",
+            listOf(checks).deriveTransientActivityStatus(true, "turn-1"),
+        )
+        assertEquals(
+            "checking changes...",
+            listOf(diff).deriveTransientActivityStatus(true, "turn-1"),
+        )
+        assertEquals(
+            "editing MainShell.kt...",
+            listOf(edit).deriveTransientActivityStatus(true, "turn-1"),
+        )
     }
 }

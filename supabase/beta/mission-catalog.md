@@ -49,6 +49,10 @@ These have both backend route support and Android app hooks.
 | `settings-tester-hq-entry` | auto-live | `settings_tester_hq_entry_opened` | 15 | Find Tester HQ from Settings | Open Settings and navigate to Tester HQ from the beta row. |
 | `settings-whats-new` | auto-live | `settings_whats_new_opened` | 15 | Read changelog | Open Settings, read What's New, and report stale or unclear release notes. |
 | `about-screen` | auto-live | `about_screen_opened` | 10 | Check About screen | Open About and verify version/build information looks correct. |
+| `streaming-response` | auto-live | `streaming_response_seen` | 35 | Watch a streaming response | Send a request that produces a longer answer and check whether partial updates merge cleanly. |
+| `scroll-long-thread` | auto-live | `scroll_long_thread_checked` | 25 | Test long-thread scrolling | Open a long conversation, scroll up and down, and verify the composer and timeline stay usable. |
+| `file-change-card` | auto-live | `file_change_card_checked` | 30 | Inspect file-change cards | Run a task that produces a patch and check summary, file labels, and detail expansion. |
+| `command-card` | auto-live | `command_card_checked` | 25 | Inspect command cards | Run a task with terminal output and verify command status, output, and failure states are readable. |
 
 ## Route-Ready Missions
 
@@ -56,11 +60,7 @@ These are supported by `/beta/mission-event`, but still need app-side hooks befo
 
 | Mission ID suffix | Status | Event type | Points | Title | Description |
 | --- | --- | --- | ---: | --- | --- |
-| `streaming-response` | route-ready | `streaming_response_seen` | 35 | Watch a streaming response | Send a request that produces a longer answer and check whether partial updates merge cleanly. |
-| `scroll-long-thread` | route-ready | `scroll_long_thread_checked` | 25 | Test long-thread scrolling | Open a long conversation, scroll up and down, and verify the composer and timeline stay usable. |
 | `markdown-rendering` | route-ready | `markdown_rendering_checked` | 25 | Check markdown rendering | Ask for a response with bullets, code, and a link; report broken spacing or clipping. |
-| `file-change-card` | route-ready | `file_change_card_checked` | 30 | Inspect file-change cards | Run a task that produces a patch and check summary, file labels, and detail expansion. |
-| `command-card` | route-ready | `command_card_checked` | 25 | Inspect command cards | Run a task with terminal output and verify command status, output, and failure states are readable. |
 | `composer-basic` | route-ready | `composer_basic_used` | 20 | Test composer basics | Type, edit, send, and clear a message from the composer. |
 | `composer-mentions` | route-ready | `composer_mentions_used` | 30 | Test composer mentions | Try file, skill, or command-style mentions and report autocomplete issues. |
 | `composer-runtime-controls` | route-ready | `composer_runtime_controls_used` | 25 | Test runtime controls | Change available runtime/model controls and verify the selected state remains visible. |

@@ -11,10 +11,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -952,17 +951,35 @@ fun MainShell(
         Scaffold(
             modifier = modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.background,
-            // Home: ConversationHeader spans under the status bar. Other routes nest their own TopAppBar
-            // — avoid stacking root safeDrawing TOP padding with the child's status-bar insets (double gap).
+            // Home overlays ConversationHeader inside content; do not reserve root top-bar height.
             contentWindowInsets =
-                if (showShellHeader) {
-                    ScaffoldDefaults.contentWindowInsets
-                } else {
-                    WindowInsets.safeDrawing.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                ),
+        ) { innerPadding ->
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+            ) {
+                CompositionLocalProvider(
+                    LocalOpenRepoDiffForMarkdownLink provides ::openRepoDiffSheetFromMarkdown,
+                ) {
+                    AppNavHost(
+                        navController = navController,
+                        repository = repository,
+                        reconnectUiState = reconnectUiState,
+                        onReconnectSavedPairing = viewModel::reconnectSavedPairingManually,
+                        onWakeSavedComputer = viewModel::wakeSavedComputerDisplay,
+                        onOpenPairingScanner = onOpenPairingScanner,
+                        onGitContextChanged = { gitToolbarRefreshNonce++ },
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .then(if (showShellHeader) Modifier.statusBarsPadding() else Modifier),
                     )
-                },
-            topBar = {
+                }
                 if (showShellHeader) {
                     ConversationHeader(
                         title = activeThreadTitle,
@@ -1022,28 +1039,7 @@ fun MainShell(
                                 }
                             }
                         },
-                    )
-                }
-            },
-        ) { innerPadding ->
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-            ) {
-                CompositionLocalProvider(
-                    LocalOpenRepoDiffForMarkdownLink provides ::openRepoDiffSheetFromMarkdown,
-                ) {
-                    AppNavHost(
-                        navController = navController,
-                        repository = repository,
-                        reconnectUiState = reconnectUiState,
-                        onReconnectSavedPairing = viewModel::reconnectSavedPairingManually,
-                        onWakeSavedComputer = viewModel::wakeSavedComputerDisplay,
-                        onOpenPairingScanner = onOpenPairingScanner,
-                        onGitContextChanged = { gitToolbarRefreshNonce++ },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.align(Alignment.TopCenter),
                     )
                 }
                 if (showShellHeader) {
@@ -1061,7 +1057,9 @@ fun MainShell(
                         },
                         modifier =
                             Modifier
-                                .align(Alignment.TopCenter),
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(top = 128.dp),
                     )
                 }
             }
