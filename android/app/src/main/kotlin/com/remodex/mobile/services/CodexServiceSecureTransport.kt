@@ -32,6 +32,9 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
  * Must stay `iphone` until phodex-bridge `secure-transport.js` accepts another literal for this direction.
  */
 private const val SECURE_ENVELOPE_MOBILE_SENDER = "iphone"
+private const val MAX_CIPHERTEXT_BASE64_LENGTH = 2 * 1024 * 1024
+private const val MAX_TAG_BASE64_LENGTH = 64
+private const val MAX_SECURE_PLAINTEXT_BYTES = 1 * 1024 * 1024
 
 /**
  * Mirrors [CodexService+SecureTransport.swift](../../../../../../../../CodexMobile/CodexMobile/Services/CodexService+SecureTransport.swift).
@@ -64,6 +67,12 @@ internal fun CodexService.handleEncryptedEnvelope(raw: String) {
     if (envelope.sessionId != sess.sessionId || envelope.keyEpoch != sess.keyEpoch) return
     if (envelope.sender != "mac") return
     if (envelope.counter <= sess.lastInboundCounter) return
+    if (
+        envelope.ciphertext.length > MAX_CIPHERTEXT_BASE64_LENGTH ||
+        envelope.tag.length > MAX_TAG_BASE64_LENGTH
+    ) {
+        return
+    }
 
     val nonce = codexSecureNonce("mac", envelope.counter)
     val plaintext =
@@ -73,6 +82,7 @@ internal fun CodexService.handleEncryptedEnvelope(raw: String) {
             base64DecodeOrEmpty(envelope.ciphertext),
             base64DecodeOrEmpty(envelope.tag),
         ) ?: return
+    if (plaintext.size > MAX_SECURE_PLAINTEXT_BYTES) return
 
     sess.lastInboundCounter = envelope.counter
     val payload =

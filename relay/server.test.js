@@ -6,7 +6,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { generateKeyPairSync, sign } = require("crypto");
+const { generateKeyPairSync, sign, verify } = require("crypto");
 const WebSocket = require("ws");
 const {
   createRelayServer,
@@ -159,18 +159,20 @@ test("completion pushes are rejected after the mac relay session disconnects", a
 
 test("trusted session resolve returns the current live session for a trusted iphone", async () => {
   const phoneIdentity = makePhoneIdentity();
+  const macIdentity = makeMacIdentity();
 
   await withServer(async ({ port }) => {
     const mac = new WebSocket(`ws://127.0.0.1:${port}/relay/live-session-1`, {
       headers: {
         "x-role": "mac",
         "x-mac-device-id": "mac-1",
-        "x-mac-identity-public-key": "mac-public-key-1",
+        "x-mac-identity-public-key": macIdentity.macIdentityPublicKey,
         "x-machine-name": "Emanuele-Mac",
         "x-trusted-phone-device-id": phoneIdentity.phoneDeviceId,
         "x-trusted-phone-public-key": phoneIdentity.phoneIdentityPublicKey,
       },
     });
+    respondToResolveSignatureRequests(mac, macIdentity);
     await onceOpen(mac);
 
     const body = makeTrustedResolveBody({
@@ -186,13 +188,16 @@ test("trusted session resolve returns the current live session for a trusted iph
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      ok: true,
-      macDeviceId: "mac-1",
-      macIdentityPublicKey: "mac-public-key-1",
-      displayName: "Emanuele-Mac",
-      sessionId: "live-session-1",
-    });
+    const responseBody = await response.json();
+    assert.equal(responseBody.ok, true);
+    assert.equal(responseBody.macDeviceId, "mac-1");
+    assert.equal(responseBody.macIdentityPublicKey, macIdentity.macIdentityPublicKey);
+    assert.equal(responseBody.displayName, "Emanuele-Mac");
+    assert.equal(responseBody.sessionId, "live-session-1");
+    assert.equal(typeof responseBody.responseTimestamp, "number");
+    assert.equal(typeof responseBody.signature, "string");
+    assert.ok(responseBody.signature.length > 0);
+    assert.ok(verifyResolveResponseSignature(responseBody, body, phoneIdentity));
 
     const macClosed = onceClosed(mac);
     mac.close();
@@ -306,17 +311,19 @@ test("trusted session resolve rejects iphones that are not trusted for the live 
 
 test("trusted session resolve rejects replayed nonces", async () => {
   const phoneIdentity = makePhoneIdentity();
+  const macIdentity = makeMacIdentity();
 
   await withServer(async ({ port }) => {
     const mac = new WebSocket(`ws://127.0.0.1:${port}/relay/live-session-3`, {
       headers: {
         "x-role": "mac",
         "x-mac-device-id": "mac-3",
-        "x-mac-identity-public-key": "mac-public-key-3",
+        "x-mac-identity-public-key": macIdentity.macIdentityPublicKey,
         "x-trusted-phone-device-id": phoneIdentity.phoneDeviceId,
         "x-trusted-phone-public-key": phoneIdentity.phoneIdentityPublicKey,
       },
     });
+    respondToResolveSignatureRequests(mac, macIdentity);
     await onceOpen(mac);
 
     const body = makeTrustedResolveBody({
@@ -371,22 +378,24 @@ test("trusted session resolve reports an offline mac without pretending the endp
 
 test("trusted session resolve starts working immediately after a mac updates its trusted-phone registration", async () => {
   const phoneIdentity = makePhoneIdentity();
+  const macIdentity = makeMacIdentity();
 
   await withServer(async ({ port }) => {
     const mac = new WebSocket(`ws://127.0.0.1:${port}/relay/live-session-4`, {
       headers: {
         "x-role": "mac",
         "x-mac-device-id": "mac-4",
-        "x-mac-identity-public-key": "mac-public-key-4",
+        "x-mac-identity-public-key": macIdentity.macIdentityPublicKey,
       },
     });
+    respondToResolveSignatureRequests(mac, macIdentity);
     await onceOpen(mac);
 
     mac.send(JSON.stringify({
       kind: "relayMacRegistration",
       registration: {
         macDeviceId: "mac-4",
-        macIdentityPublicKey: "mac-public-key-4",
+        macIdentityPublicKey: macIdentity.macIdentityPublicKey,
         displayName: "Updated-Mac",
         trustedPhoneDeviceId: phoneIdentity.phoneDeviceId,
         trustedPhonePublicKey: phoneIdentity.phoneIdentityPublicKey,
@@ -770,6 +779,14 @@ function delay(milliseconds) {
   });
 }
 
+function safeParseJSON(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function makePhoneIdentity() {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const publicJwk = publicKey.export({ format: "jwk" });
@@ -779,6 +796,44 @@ function makePhoneIdentity() {
     phoneIdentityPublicKey: base64UrlToBase64(publicJwk.x),
     phoneIdentityPrivateKey: base64UrlToBase64(privateJwk.d),
   };
+}
+
+function makeMacIdentity() {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const publicJwk = publicKey.export({ format: "jwk" });
+  const privateJwk = privateKey.export({ format: "jwk" });
+  return {
+    macIdentityPublicKey: base64UrlToBase64(publicJwk.x),
+    macIdentityPrivateKey: base64UrlToBase64(privateJwk.d),
+  };
+}
+
+function respondToResolveSignatureRequests(socket, macIdentity) {
+  socket.on("message", (value) => {
+    const parsed = safeParseJSON(value.toString("utf8"));
+    if (parsed?.kind !== "relayTrustedSessionResolveSignRequest") {
+      return;
+    }
+    const transcript = Buffer.from(parsed.transcript, "base64");
+    const signature = sign(
+      null,
+      transcript,
+      {
+        key: {
+          crv: "Ed25519",
+          d: base64ToBase64Url(macIdentity.macIdentityPrivateKey),
+          kty: "OKP",
+          x: base64ToBase64Url(macIdentity.macIdentityPublicKey),
+        },
+        format: "jwk",
+      }
+    ).toString("base64");
+    socket.send(JSON.stringify({
+      kind: "relayTrustedSessionResolveSignature",
+      requestId: parsed.requestId,
+      signature,
+    }));
+  });
 }
 
 function makeTrustedResolveBody({
@@ -814,6 +869,58 @@ function makeTrustedResolveBody({
       }
     ).toString("base64"),
   };
+}
+
+function verifyResolveResponseSignature(responseBody, requestBody, phoneIdentity) {
+  const transcript = buildTrustedResolveResponseTranscript({
+    macDeviceId: responseBody.macDeviceId,
+    macIdentityPublicKey: responseBody.macIdentityPublicKey,
+    displayName: responseBody.displayName || "",
+    sessionId: responseBody.sessionId,
+    phoneDeviceId: phoneIdentity.phoneDeviceId,
+    phoneIdentityPublicKey: phoneIdentity.phoneIdentityPublicKey,
+    nonce: requestBody.nonce,
+    timestamp: requestBody.timestamp,
+    responseTimestamp: responseBody.responseTimestamp,
+  });
+  return verify(
+    null,
+    transcript,
+    {
+      key: {
+        crv: "Ed25519",
+        kty: "OKP",
+        x: base64ToBase64Url(responseBody.macIdentityPublicKey),
+      },
+      format: "jwk",
+    },
+    Buffer.from(responseBody.signature, "base64")
+  );
+}
+
+function buildTrustedResolveResponseTranscript({
+  macDeviceId,
+  macIdentityPublicKey,
+  displayName,
+  sessionId,
+  phoneDeviceId,
+  phoneIdentityPublicKey,
+  nonce,
+  timestamp,
+  responseTimestamp,
+}) {
+  return Buffer.concat([
+    encodeLengthPrefixedUTF8("remodex-trusted-session-resolve-response-v1"),
+    encodeLengthPrefixedUTF8(macDeviceId),
+    encodeLengthPrefixedData(Buffer.from(macIdentityPublicKey, "base64")),
+    encodeLengthPrefixedUTF8(displayName || ""),
+    encodeLengthPrefixedUTF8(sessionId),
+    encodeLengthPrefixedUTF8(phoneDeviceId),
+    encodeLengthPrefixedData(Buffer.from(phoneIdentityPublicKey, "base64")),
+    encodeLengthPrefixedUTF8(nonce),
+    encodeLengthPrefixedUTF8(String(timestamp)),
+    encodeLengthPrefixedUTF8(String(responseTimestamp)),
+  ]);
 }
 
 function buildTrustedResolveTranscript({

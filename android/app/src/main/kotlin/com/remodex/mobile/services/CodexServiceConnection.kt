@@ -20,7 +20,7 @@ internal suspend fun CodexService.connectImpl(
     disconnectImpl(preservePresentationState = true)
     _connectionState.value = ConnectionState.Connecting
     controlMux = SecureControlMultiplexer(json) { }
-    val inbound = Channel<String>(Channel.UNLIMITED)
+    val inbound = Channel<String>(capacity = 64)
     wireInbound = inbound
     wireJob =
         scope.launch {

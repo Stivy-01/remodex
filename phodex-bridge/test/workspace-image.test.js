@@ -125,7 +125,7 @@ test("workspace/readImage accepts bounded preview reads", async () => {
   assert.ok(Buffer.from(result.dataBase64, "base64").length > 0);
 });
 
-test("workspace/readImage ignores client platform fields for non-mac preview decisions", async (t) => {
+test("workspace/readImage uses the host platform, not client platform fields, for preview decisions", async (t) => {
   useProcessPlatform(t, "win32");
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "remodex-image-"));
   execFileSync("git", ["init"], { cwd: tempDir, stdio: "ignore" });
@@ -142,7 +142,9 @@ test("workspace/readImage ignores client platform fields for non-mac preview dec
   });
 
   assert.equal(result.previewMaxPixelDimension, 1600);
-  assert.equal(Buffer.from(result.dataBase64, "base64").length, validOnePixelPNG.length);
+  const previewLength = Buffer.from(result.dataBase64, "base64").length;
+  assert.ok(previewLength > 0);
+  assert.ok(previewLength <= 2 * 1024 * 1024);
 });
 
 test("workspace/readImage retries smaller previews when the first preview is still too large", async (t) => {

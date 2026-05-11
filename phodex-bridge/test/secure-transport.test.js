@@ -16,6 +16,7 @@ const {
   generateKeyPairSync,
   hkdfSync,
   sign,
+  verify,
 } = require("crypto");
 const {
   HANDSHAKE_MODE_QR_BOOTSTRAP,
@@ -59,6 +60,43 @@ test("secure transport rejects plaintext JSON-RPC before the secure handshake", 
   assert.equal(handled, true);
   assert.equal(controlMessages[0]?.kind, "secureError");
   assert.equal(controlMessages[0]?.code, "update_required");
+});
+
+test("secure transport signs trusted-session resolve transcripts for the relay", () => {
+  const macIdentity = createOkpKeyPair("ed25519");
+  const secureTransport = createBridgeSecureTransport({
+    sessionId: "session-resolve-sign",
+    relayUrl: "wss://relay.example/relay",
+    deviceState: {
+      macDeviceId: "mac-resolve",
+      macIdentityPrivateKey: macIdentity.privateKey,
+      macIdentityPublicKey: macIdentity.publicKey,
+      trustedPhones: {},
+    },
+  });
+  const transcript = Buffer.from("trusted resolve response transcript", "utf8");
+  const controlMessages = [];
+
+  const handled = secureTransport.handleIncomingWireMessage(
+    JSON.stringify({
+      kind: "relayTrustedSessionResolveSignRequest",
+      requestId: "resolve-request-1",
+      transcript: transcript.toString("base64"),
+    }),
+    {
+      sendControlMessage(message) {
+        controlMessages.push(message);
+      },
+      onApplicationMessage() {
+        throw new Error("relay control messages should not reach application dispatch");
+      },
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.equal(controlMessages[0]?.kind, "relayTrustedSessionResolveSignature");
+  assert.equal(controlMessages[0]?.requestId, "resolve-request-1");
+  assert.ok(verifyEd25519(macIdentity.publicKey, transcript, controlMessages[0]?.signature));
 });
 
 test("secure transport round-trips encrypted payloads after a trusted reconnect handshake", () => {
@@ -658,6 +696,22 @@ function createOkpKeyPair(type) {
     privateKey: base64UrlToBase64(privateJwk.d),
     publicKey: base64UrlToBase64(publicJwk.x),
   };
+}
+
+function verifyEd25519(publicKeyBase64, transcript, signatureBase64) {
+  return verify(
+    null,
+    transcript,
+    createPublicKey({
+      key: {
+        crv: "Ed25519",
+        kty: "OKP",
+        x: base64ToBase64Url(publicKeyBase64),
+      },
+      format: "jwk",
+    }),
+    Buffer.from(signatureBase64, "base64")
+  );
 }
 
 function buildTranscriptBytes({

@@ -14,6 +14,7 @@ const val CODEX_SECURE_HANDSHAKE_TAG = "remodex-e2ee-v1"
 const val CODEX_SECURE_HANDSHAKE_LABEL = "client-auth"
 const val CODEX_SECURE_CLOCK_SKEW_TOLERANCE_SECONDS = 60.0
 const val CODEX_TRUSTED_SESSION_RESOLVE_TAG = "remodex-trusted-session-resolve-v1"
+const val CODEX_TRUSTED_SESSION_RESOLVE_RESPONSE_TAG = "remodex-trusted-session-resolve-response-v1"
 const val CODEX_TRUSTED_SESSION_RESOLVE_CLOCK_SKEW_TOLERANCE_SECONDS = 90.0
 
 @Serializable
@@ -206,6 +207,8 @@ data class CodexTrustedSessionResolveResponse(
     val macIdentityPublicKey: String,
     val displayName: String? = null,
     val sessionId: String,
+    val responseTimestamp: Long,
+    val signature: String,
 )
 
 @Serializable
@@ -279,6 +282,31 @@ fun codexTrustedSessionResolveTranscriptBytes(
     out.appendLengthPrefixedData(base64DecodeOrEmpty(phoneIdentityPublicKey))
     out.appendLengthPrefixedUtf8(nonce)
     out.appendLengthPrefixedUtf8(timestamp.toString())
+    return out.toByteArray()
+}
+
+fun codexTrustedSessionResolveResponseTranscriptBytes(
+    macDeviceId: String,
+    macIdentityPublicKey: String,
+    displayName: String?,
+    sessionId: String,
+    phoneDeviceId: String,
+    phoneIdentityPublicKey: String,
+    nonce: String,
+    timestamp: Long,
+    responseTimestamp: Long,
+): ByteArray {
+    val out = ByteArrayOutputStream()
+    out.appendLengthPrefixedUtf8(CODEX_TRUSTED_SESSION_RESOLVE_RESPONSE_TAG)
+    out.appendLengthPrefixedUtf8(macDeviceId)
+    out.appendLengthPrefixedData(base64DecodeOrEmpty(macIdentityPublicKey))
+    out.appendLengthPrefixedUtf8(displayName.orEmpty())
+    out.appendLengthPrefixedUtf8(sessionId)
+    out.appendLengthPrefixedUtf8(phoneDeviceId)
+    out.appendLengthPrefixedData(base64DecodeOrEmpty(phoneIdentityPublicKey))
+    out.appendLengthPrefixedUtf8(nonce)
+    out.appendLengthPrefixedUtf8(timestamp.toString())
+    out.appendLengthPrefixedUtf8(responseTimestamp.toString())
     return out.toByteArray()
 }
 
