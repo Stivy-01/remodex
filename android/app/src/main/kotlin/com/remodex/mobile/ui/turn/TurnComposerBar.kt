@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -45,11 +48,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.R as LucideR
 import com.remodex.mobile.R
 import com.remodex.mobile.ui.theme.AgentLightColors
 import com.remodex.mobile.ui.theme.RemodexComposerCapsuleChrome
 import com.remodex.mobile.ui.theme.isAgentLightChrome
+import com.valentinilk.shimmer.shimmer
 
 internal enum class TurnVoicePhase {
     Idle,
@@ -62,8 +67,7 @@ internal enum class TurnVoicePhase {
  *
  * In the iOS/SwiftUI surface this is the prompt composer (`TurnComposer*` family); keep this type
  * as the single Android entry point for that responsibility. [composerEnvironment] hosts the
- * Swift-style secondary row (Local / access / branch / usage ring). Kept visible so controls stay
- * reachable while typing; vertical space when the IME is open is handled by [androidx.compose.foundation.layout.imePadding] on the pane.
+ * Swift-style secondary row (Local / access / branch / usage ring) when the pane has room for it.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -115,8 +119,8 @@ internal fun TurnComposerBar(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(top = 6.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(top = 4.dp, bottom = 5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         ComposerAttachmentStrip(
             attachments = attachments,
@@ -228,19 +232,22 @@ internal fun TurnComposerBar(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 BasicTextField(
                     value = draft,
                     onValueChange = onDraftChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color.Transparent),
                     interactionSource = textInteractionSource,
                     enabled = actions.textFieldEnabled,
                     minLines = 1,
-                    maxLines = 5,
+                    maxLines = 4,
                     textStyle =
-                        MaterialTheme.typography.bodyLarge.merge(
+                        MaterialTheme.typography.bodyMedium.merge(
                             TextStyle(color = MaterialTheme.colorScheme.onSurface),
                         ),
                     decorationBox = { innerTextField ->
@@ -248,13 +255,14 @@ internal fun TurnComposerBar(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                                    .background(Color.Transparent)
+                                    .padding(horizontal = 4.dp, vertical = 8.dp),
                             contentAlignment = Alignment.CenterStart,
                         ) {
                             if (draft.isEmpty()) {
                                 Text(
                                     text = stringResource(R.string.turn_composer_hint),
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = composerHintColor,
                                 )
                             }
@@ -264,18 +272,18 @@ internal fun TurnComposerBar(
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Box {
                         IconButton(
                             onClick = { isAttachmentMenuExpanded = true },
                             enabled = !locks.runtimeControlsLocked,
-                            modifier = Modifier.size(36.dp),
+                            modifier = Modifier.size(33.dp),
                         ) {
                             Icon(
                                 painter = painterResource(LucideR.drawable.lucide_ic_paperclip),
                                 contentDescription = stringResource(R.string.turn_add_images_cd),
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(19.dp),
                                 tint = neutralToolbarIconTint,
                             )
                         }
@@ -332,10 +340,14 @@ internal fun TurnComposerBar(
                     UnifiedComposerModelRuntimeChip(
                         runtimeControls = runtimeControls,
                         runtimeToolbarMenu = runtimeToolbarMenu,
-                        enabled = !locks.runtimeControlsLocked,
+                        enabled = true,
                         onSelectModel = onSelectModel,
                         onSelectReasoningEffort = onSelectReasoningEffort,
                         onSelectServiceTier = onSelectServiceTier,
+                        modifier =
+                            Modifier
+                                .wrapContentWidth()
+                                .widthIn(max = 136.dp),
                     )
                     if (isPlanModeEnabled) {
                         ComposerPlanModeBadge(
@@ -344,7 +356,7 @@ internal fun TurnComposerBar(
                     }
                     Box(modifier = Modifier.weight(1f))
                     Box(
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(33.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (actions.voiceIcon == TurnComposerVoiceToolbarIcon.Progress) {
@@ -352,7 +364,7 @@ internal fun TurnComposerBar(
                             CircularProgressIndicator(
                                 modifier =
                                     Modifier
-                                        .size(24.dp)
+                                        .size(22.dp)
                                         .semantics { contentDescription = transcribingLabel },
                                 strokeWidth = 2.dp,
                             )
@@ -360,14 +372,14 @@ internal fun TurnComposerBar(
                             IconButton(
                                 onClick = onVoiceClick,
                                 enabled = actions.voiceControlEnabled,
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(33.dp),
                             ) {
                                 when (actions.voiceIcon) {
                                     TurnComposerVoiceToolbarIcon.Stop -> {
                                         Icon(
                                             painter = painterResource(LucideR.drawable.lucide_ic_circle_stop),
                                             contentDescription = stringResource(R.string.turn_voice_stop_cd),
-                                            modifier = Modifier.size(20.dp),
+                                            modifier = Modifier.size(19.dp),
                                             tint = MaterialTheme.colorScheme.error,
                                         )
                                     }
@@ -375,7 +387,7 @@ internal fun TurnComposerBar(
                                         Icon(
                                             painter = painterResource(LucideR.drawable.lucide_ic_mic),
                                             contentDescription = stringResource(R.string.turn_voice_mic_cd),
-                                            modifier = Modifier.size(20.dp),
+                                            modifier = Modifier.size(19.dp),
                                             tint = neutralToolbarIconTint,
                                         )
                                     }
@@ -387,12 +399,12 @@ internal fun TurnComposerBar(
                         }
                     }
                     Box(
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(33.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (actions.sendShowsProgress) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
+                                modifier = Modifier.size(22.dp),
                                 strokeWidth = 2.dp,
                             )
                         } else {
@@ -413,7 +425,7 @@ internal fun TurnComposerBar(
                             Box(
                                 modifier =
                                     Modifier
-                                        .size(36.dp)
+                                        .size(33.dp)
                                         .clip(CircleShape)
                                         .background(sendBg)
                                         .clickable(
@@ -426,7 +438,7 @@ internal fun TurnComposerBar(
                                 Icon(
                                     painter = painterResource(LucideR.drawable.lucide_ic_arrow_up),
                                     contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(17.dp),
                                     tint = iconTint,
                                 )
                             }
@@ -478,11 +490,11 @@ private fun ComposerPlanModeBadge(
         } else {
             Color(0xFF4D3B12)
         }
-    val border =
+    val glow =
         if (lightChrome) {
-            Color(0xFFE7B900).copy(alpha = 0.62f)
+            Color(0xFFFFD84A).copy(alpha = 0.48f)
         } else {
-            Color(0xFFFFD666).copy(alpha = 0.42f)
+            Color(0xFFFFD666).copy(alpha = 0.28f)
         }
     val textColor =
         if (lightChrome) {
@@ -495,17 +507,25 @@ private fun ComposerPlanModeBadge(
     Box(
         modifier =
             Modifier
+                .shimmer()
                 .clip(shape)
-                .background(background)
-                .border(0.5.dp, border, shape)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            background,
+                            glow,
+                            background,
+                        ),
+                    ),
+                )
                 .clickable(onClick = onClick)
                 .semantics { contentDescription = label }
-                .padding(horizontal = 9.dp, vertical = 5.dp),
+                .padding(horizontal = 9.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
             color = textColor,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,

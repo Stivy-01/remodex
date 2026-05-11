@@ -27,14 +27,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,11 +58,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.remodex.mobile.AppContainer
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.CodexPairingQRPayload
 import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.data.QrPairingValidationResult
+import com.remodex.mobile.data.resolvePairingCode
 import com.remodex.mobile.data.validatePairingQrCode
 import com.remodex.mobile.pairing.LoopbackRelayException
 import com.remodex.mobile.pairing.applyQrPayloadAndConnect
@@ -73,6 +82,7 @@ fun QrScannerScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -83,23 +93,56 @@ fun QrScannerScreen(
     var bridgeUpdateVisible by remember { mutableStateOf(false) }
     var scanEnabled by remember { mutableStateOf(true) }
     var pendingPayload by remember { mutableStateOf<CodexPairingQRPayload?>(null) }
+    var scannerResetNonce by remember { mutableStateOf(0) }
+    var manualPairingDialogVisible by remember { mutableStateOf(false) }
+    var manualPairingText by remember { mutableStateOf("") }
+    var manualRelayUrl by remember {
+        mutableStateOf(AppContainer.sessionPersistence.loadRelaySnapshot().relayUrl.orEmpty())
+    }
 
     fun hasCameraPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
 
-    val permissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (!granted) {
-                errorMessage = context.getString(R.string.qr_scanner_camera_denied)
-            }
-        }
+    var cameraPermissionGranted by remember { mutableStateOf(hasCameraPermission()) }
 
     fun resetScanner() {
         pendingPayload = null
         scanEnabled = true
         statusMessage = null
         errorMessage = null
+        bridgeUpdateTitle = ""
+        bridgeUpdateMessage = ""
+        bridgeUpdateCommand = null
+        bridgeUpdateVisible = false
+        scannerResetNonce += 1
+    }
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            cameraPermissionGranted = granted || hasCameraPermission()
+            if (cameraPermissionGranted) {
+                resetScanner()
+            } else {
+                errorMessage = context.getString(R.string.qr_scanner_camera_denied)
+            }
+        }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    val granted = hasCameraPermission()
+                    cameraPermissionGranted = granted
+                    if (granted) {
+                        resetScanner()
+                    }
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     fun runConnect(payload: CodexPairingQRPayload) {
@@ -135,6 +178,72 @@ fun QrScannerScreen(
         }
     }
 
+    fun handlePairingResult(result: QrPairingValidationResult) {
+        when (result) {
+            is QrPairingValidationResult.Success -> {
+                pendingPayload = result.payload
+                scanEnabled = false
+                manualPairingDialogVisible = false
+                runConnect(result.payload)
+            }
+            is QrPairingValidationResult.ScanError -> {
+                scanEnabled = false
+                errorMessage = result.message
+            }
+            is QrPairingValidationResult.BridgeUpdateRequired -> {
+                scanEnabled = false
+                bridgeUpdateTitle = result.title
+                bridgeUpdateMessage = result.message
+                bridgeUpdateCommand = result.command
+                bridgeUpdateVisible = true
+            }
+        }
+    }
+
+    fun submitManualPairing() {
+        scope.launch {
+            val raw = manualPairingText.trim()
+            if (raw.isEmpty()) {
+                errorMessage = "Enter the pairing code from your desktop."
+                return@launch
+            }
+            errorMessage = null
+            statusMessage = "Resolving pairing code"
+            connecting = true
+            try {
+                when (val directResult = validatePairingQrCode(raw)) {
+                    is QrPairingValidationResult.Success -> {
+                        connecting = false
+                        handlePairingResult(directResult)
+                    }
+                    is QrPairingValidationResult.BridgeUpdateRequired -> {
+                        connecting = false
+                        handlePairingResult(directResult)
+                    }
+                    is QrPairingValidationResult.ScanError -> {
+                        val relay = manualRelayUrl.trim()
+                        if (relay.isEmpty()) {
+                            connecting = false
+                            errorMessage = "Enter the relay URL shown on your desktop to use a short pairing code."
+                            return@launch
+                        }
+                        val resolved =
+                            resolvePairingCode(
+                                httpClient = AppContainer.httpClient,
+                                relayUrl = relay,
+                                code = raw,
+                            )
+                        connecting = false
+                        handlePairingResult(resolved)
+                    }
+                }
+            } catch (e: Exception) {
+                connecting = false
+                errorMessage = e.message ?: e::class.simpleName
+            }
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = Color(0xFFF4F3F1),
@@ -162,36 +271,22 @@ fun QrScannerScreen(
                         .clip(RoundedCornerShape(22.dp))
                         .background(Color(0xFF3B332C)),
             ) {
-                if (!hasCameraPermission()) {
+                if (!cameraPermissionGranted) {
                     PermissionPrompt(
                         onGrantCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                         modifier = Modifier.align(Alignment.Center),
                     )
                 } else {
                     if (scanEnabled && pendingPayload == null) {
-                        PairingQrScanner(
-                            modifier = Modifier.matchParentSize(),
-                            onDecodedPayload = { raw ->
-                                errorMessage = null
-                                when (val result = validatePairingQrCode(raw)) {
-                                    is QrPairingValidationResult.Success -> {
-                                        pendingPayload = result.payload
-                                        scanEnabled = false
-                                        runConnect(result.payload)
-                                    }
-                                    is QrPairingValidationResult.ScanError -> {
-                                        errorMessage = result.message
-                                    }
-                                    is QrPairingValidationResult.BridgeUpdateRequired -> {
-                                        scanEnabled = false
-                                        bridgeUpdateTitle = result.title
-                                        bridgeUpdateMessage = result.message
-                                        bridgeUpdateCommand = result.command
-                                        bridgeUpdateVisible = true
-                                    }
-                                }
-                            },
-                        )
+                        key(scannerResetNonce) {
+                            PairingQrScanner(
+                                modifier = Modifier.matchParentSize(),
+                                onDecodedPayload = { raw ->
+                                    errorMessage = null
+                                    handlePairingResult(validatePairingQrCode(raw))
+                                },
+                            )
+                        }
                     }
                     QrScannerOverlay(
                         connecting = connecting,
@@ -203,6 +298,15 @@ fun QrScannerScreen(
             }
 
             Spacer(modifier = Modifier.height(36.dp))
+
+            Button(
+                onClick = { manualPairingDialogVisible = true },
+                enabled = !connecting,
+            ) {
+                Text("Enter pairing code")
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             Image(
                 painter = painterResource(R.drawable.remodex_icon),
@@ -233,6 +337,49 @@ fun QrScannerScreen(
             resetScanner()
         },
     )
+
+    if (manualPairingDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { if (!connecting) manualPairingDialogVisible = false },
+            title = { Text("Pair manually") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = manualPairingText,
+                        onValueChange = { manualPairingText = it },
+                        label = { Text("Pairing code or QR JSON") },
+                        singleLine = false,
+                        minLines = 2,
+                        enabled = !connecting,
+                    )
+                    OutlinedTextField(
+                        value = manualRelayUrl,
+                        onValueChange = { manualRelayUrl = it },
+                        label = { Text("Relay URL for short codes") },
+                        placeholder = { Text("ws://192.168.1.5:9000/relay") },
+                        singleLine = true,
+                        enabled = !connecting,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = ::submitManualPairing,
+                    enabled = !connecting,
+                ) {
+                    Text("Connect")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { manualPairingDialogVisible = false },
+                    enabled = !connecting,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @Composable

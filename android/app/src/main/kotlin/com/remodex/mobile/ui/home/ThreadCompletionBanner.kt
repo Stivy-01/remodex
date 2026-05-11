@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -199,7 +200,8 @@ fun ThreadCompletionBanner(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                    .padding(horizontal = 18.dp, vertical = 8.dp)
+                    .border(0.5.dp, bannerBorderColor(), RoundedCornerShape(16.dp)),
             shape = RoundedCornerShape(16.dp),
             color = bannerSurfaceColor(),
             tonalElevation = if (isAgentLightChrome()) 0.dp else 2.dp,
@@ -236,7 +238,8 @@ private fun GitActionProgressBanner(
         modifier =
             modifier
                 .padding(horizontal = 18.dp, vertical = 8.dp)
-                .widthIn(max = 430.dp),
+                .widthIn(max = 430.dp)
+                .border(0.5.dp, bannerBorderColor(), RoundedCornerShape(15.dp)),
         shape = RoundedCornerShape(15.dp),
         color = bannerSurfaceColor(),
         tonalElevation = if (isAgentLightChrome()) 0.dp else 2.dp,
@@ -350,4 +353,12 @@ private fun bannerSurfaceColor(): Color =
         AgentLightColors.Surface.copy(alpha = 0.96f)
     } else {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
+    }
+
+@Composable
+private fun bannerBorderColor(): Color =
+    if (isAgentLightChrome()) {
+        Color.White.copy(alpha = 0.62f)
+    } else {
+        Color.White.copy(alpha = 0.12f)
     }

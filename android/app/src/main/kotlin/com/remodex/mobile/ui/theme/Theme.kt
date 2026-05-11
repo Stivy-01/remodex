@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.remodex.mobile.core.model.AppFontStyle
 import com.remodex.mobile.data.AppFontPreferences
+import com.remodex.mobile.data.ThemePreferences
 
 private val LightColorScheme =
     lightColorScheme(
@@ -79,7 +80,7 @@ fun RemodexTheme(
     DisposableEffect(context) {
         val prefs =
             context.applicationContext.getSharedPreferences(
-                "remodex_prefs",
+                ThemePreferences.PREFS_NAME,
                 android.content.Context.MODE_PRIVATE,
             )
         val listener =

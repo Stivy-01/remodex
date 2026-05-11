@@ -27,6 +27,7 @@ interface AppStatus {
   network: string;
   relay_url: string;
   pairing_payload: string | null;
+  pairing_code: string | null;
   phone_connected: boolean;
 }
 
@@ -116,10 +117,12 @@ function App() {
     network: "--",
     relay_url: "",
     pairing_payload: null,
+    pairing_code: null,
     phone_connected: false,
   });
   const [networks, setNetworks] = useState<NetworkInterface[]>([]);
   const [pairingPayload, setPairingPayload] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [view, setView] = useState<View>("dashboard");
   const [starting, setStarting] = useState(false);
   const [tauriReady, setTauriReady] = useState(false);
@@ -226,6 +229,22 @@ function App() {
 
     listen<string>("pairing-ready", (event) => {
       setPairingPayload(event.payload);
+    }).then((fn) => {
+      unlistenFn = fn;
+    });
+
+    return () => {
+      unlistenFn?.();
+    };
+  }, [tauriReady]);
+
+  // Listen for manual pairing code
+  useEffect(() => {
+    if (!tauriReady) return;
+    let unlistenFn: (() => void) | null = null;
+
+    listen<string>("pairing-code-ready", (event) => {
+      setPairingCode(event.payload);
     }).then((fn) => {
       unlistenFn = fn;
     });
@@ -364,6 +383,9 @@ function App() {
         setPhoneConnected(s.phone_connected);
         if (s.pairing_payload) {
           setPairingPayload(s.pairing_payload);
+        }
+        if (s.pairing_code) {
+          setPairingCode(s.pairing_code);
         }
       } catch (_) {}
     };
@@ -539,6 +561,12 @@ function App() {
   const handleCopyUrl = async () => {
     if (status.relay_url) {
       await navigator.clipboard.writeText(status.relay_url);
+    }
+  };
+
+  const handleCopyPairingCode = async () => {
+    if (pairingCode) {
+      await navigator.clipboard.writeText(pairingCode);
     }
   };
 
@@ -855,6 +883,45 @@ function App() {
                 }}
               >
                 {pairingPayload.slice(0, 80)}...
+              </div>
+            )}
+            {pairingCode && (
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "11px",
+                    fontFamily: "ui-monospace, Consolas, monospace",
+                    letterSpacing: "0.08em",
+                    color: "var(--text-primary)",
+                    background: "var(--bg-primary)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "4px",
+                    padding: "5px 8px",
+                  }}
+                >
+                  {pairingCode}
+                </div>
+                <button
+                  onClick={handleCopyPairingCode}
+                  style={{
+                    fontSize: "10px",
+                    color: "var(--accent-blue)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  Copy pairing code
+                </button>
               </div>
             )}
           </div>

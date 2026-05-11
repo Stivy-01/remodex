@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -130,42 +131,70 @@ internal fun SmartScrollNavigationCta(
         visible = state.visible,
         modifier = modifier,
     ) {
-        Surface(
-            modifier = Modifier.shadow(10.dp, RoundedCornerShape(22.dp)),
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)),
-            tonalElevation = 2.dp,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+        BoxWithConstraints {
+            val compact = maxWidth < 340.dp
+            val shape = RoundedCornerShape(if (compact) 18.dp else 22.dp)
+            Surface(
+                modifier = Modifier.shadow(10.dp, shape),
+                shape = shape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)),
+                tonalElevation = 2.dp,
             ) {
-                state.actions.forEachIndexed { index, action ->
-                    if (index > 0) {
-                        Surface(
+                Row(
+                    modifier =
+                        Modifier.padding(
+                            horizontal = if (compact) 3.dp else 6.dp,
+                            vertical = if (compact) 3.dp else 5.dp,
+                        ),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    state.actions.forEachIndexed { index, action ->
+                        if (index > 0) {
+                            Surface(
+                                modifier =
+                                    Modifier
+                                        .padding(horizontal = if (compact) 2.dp else 4.dp)
+                                        .width(0.5.dp)
+                                        .height(if (compact) 20.dp else 26.dp),
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
+                                content = {},
+                            )
+                        }
+                        Text(
+                            text = action.displayLabel(compact),
                             modifier =
                                 Modifier
-                                    .padding(horizontal = 4.dp)
-                                    .width(0.5.dp)
-                                    .height(26.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
-                            content = {},
+                                    .clickable { onNavigate(action.targetIndex) }
+                                    .padding(
+                                        horizontal = if (compact) 7.dp else 11.dp,
+                                        vertical = if (compact) 6.dp else 8.dp,
+                                    ),
+                            style =
+                                if (compact) {
+                                    MaterialTheme.typography.labelMedium
+                                } else {
+                                    MaterialTheme.typography.labelLarge
+                                },
+                            color = Color.Unspecified,
                         )
                     }
-                    Text(
-                        text = action.label,
-                        modifier =
-                            Modifier
-                                .clickable { onNavigate(action.targetIndex) }
-                                .padding(horizontal = 11.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.Unspecified,
-                    )
                 }
             }
         }
     }
 }
+
+private fun SmartScrollAction.displayLabel(compact: Boolean): String =
+    if (!compact) {
+        label
+    } else {
+        when (label) {
+            SMART_SCROLL_LABEL_PREV_USER -> "\u2191 Prev"
+            SMART_SCROLL_LABEL_NEXT_USER -> "\u2193 Next"
+            SMART_SCROLL_LABEL_LATEST -> "\u2193 Latest"
+            else -> label
+        }
+    }

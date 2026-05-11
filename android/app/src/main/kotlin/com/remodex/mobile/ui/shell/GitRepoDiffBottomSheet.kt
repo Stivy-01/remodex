@@ -105,7 +105,7 @@ fun GitRepoDiffBottomSheet(
     onDismiss: () -> Unit,
 ) {
     if (!visible) return
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     LaunchedEffect(sheetState) {
         sheetState.expand()
     }

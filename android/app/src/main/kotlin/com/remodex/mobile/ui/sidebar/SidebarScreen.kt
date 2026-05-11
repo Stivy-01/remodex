@@ -218,6 +218,28 @@ fun SidebarScreen(
                 }
             },
         )
+        SidebarCompactActionRow(
+            label = stringResource(R.string.nav_archived_chats),
+            enabled = true,
+            busy = false,
+            onClick = onOpenArchivedChats,
+            leading = {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Archive,
+                        contentDescription = stringResource(R.string.nav_archived_chats),
+                        modifier =
+                            Modifier
+                                .padding(horizontal = 7.dp, vertical = 7.dp)
+                                .size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+        )
         newChatError?.let { err ->
             Text(
                 text = err,
@@ -236,7 +258,7 @@ fun SidebarScreen(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            groups.forEach { group ->
+            groups.filter { it.kind != SidebarThreadGroupKind.Archived }.forEach { group ->
                 item(key = "hdr-${group.id}") {
                     val isCollapsed = group.id in collapsedGroupIds
                     SidebarGroupHeaderRow(
@@ -286,12 +308,7 @@ fun SidebarScreen(
                             } else {
                                 null
                             },
-                        onOpenArchivedChats =
-                            if (group.kind == SidebarThreadGroupKind.Archived) {
-                                onOpenArchivedChats
-                            } else {
-                                null
-                            },
+                        onOpenArchivedChats = null,
                     )
                 }
                 items(

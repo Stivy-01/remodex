@@ -83,4 +83,25 @@ class ThreadProjectRoutingTest {
         val e = CodexServiceError.RpcFailure(RPCError(-1, "No rollout file found for cwd", null))
         assertTrue(shouldAllowProjectRebindWithoutResume(e))
     }
+
+    @Test
+    fun newThreadProjectPath_usesRequestedPathWhenServerOmitsCwd() {
+        val thread = CodexThread(id = "thread-1", title = "New Thread", cwd = null)
+        val patched = applyRequestedProjectPathForNewThread(thread, "/tmp/repo")
+        assertEquals("/tmp/repo", patched.gitWorkingDirectory)
+    }
+
+    @Test
+    fun newThreadProjectPath_usesRequestedPathWhenServerReturnsStaleCwd() {
+        val thread = CodexThread(id = "thread-1", title = "New Thread", cwd = "/tmp/other")
+        val patched = applyRequestedProjectPathForNewThread(thread, "/tmp/repo")
+        assertEquals("/tmp/repo", patched.gitWorkingDirectory)
+    }
+
+    @Test
+    fun newThreadProjectPath_ignoresInvalidRequestedPath() {
+        val thread = CodexThread(id = "thread-1", title = "New Thread", cwd = "/tmp/server")
+        val patched = applyRequestedProjectPathForNewThread(thread, "_default")
+        assertEquals("/tmp/server", patched.gitWorkingDirectory)
+    }
 }

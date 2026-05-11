@@ -56,6 +56,7 @@ pub struct AppStatus {
     pub network: String,
     pub relay_url: String,
     pub pairing_payload: Option<String>,
+    pub pairing_code: Option<String>,
     pub phone_connected: bool,
 }
 
@@ -123,6 +124,7 @@ pub struct AppState {
     pub selected_ip: Mutex<String>,
     pub relay_url: Mutex<String>,
     pub phone_connected: Mutex<bool>,
+    pub pairing_code: Mutex<Option<String>>,
     pub relay_intentional: Mutex<bool>,
     pub bridge_intentional: Mutex<bool>,
 }
@@ -732,6 +734,7 @@ fn start_relay(app_handle: tauri::AppHandle) -> Result<String, String> {
             network: state.selected_ip.lock().ok().map(|s| s.clone()).unwrap_or_default(),
             relay_url: state.relay_url.lock().ok().map(|s| s.clone()).unwrap_or_default(),
             pairing_payload: None,
+            pairing_code: None,
             phone_connected: false,
         });
     });
@@ -859,6 +862,14 @@ fn start_bridge(app_handle: tauri::AppHandle) -> Result<String, String> {
     }
 
     add_log(&app_handle, "app", "info", &format!("Starting bridge with relay: {relay_url}"));
+    {
+        if let Ok(mut pp) = state.pairing_payload.lock() {
+            *pp = None;
+        }
+        if let Ok(mut pc) = state.pairing_code.lock() {
+            *pc = None;
+        }
+    }
 
     let mut bridge_cmd = Command::new("node");
     bridge_cmd
@@ -866,6 +877,7 @@ fn start_bridge(app_handle: tauri::AppHandle) -> Result<String, String> {
         .arg("run")
         .current_dir(&bridge_dir)
         .env("REMODEX_RELAY", &relay_url)
+        .env("REMODEX_PRINT_PAIRING_JSON", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut bridge_cmd);
@@ -882,21 +894,37 @@ fn start_bridge(app_handle: tauri::AppHandle) -> Result<String, String> {
     let ah_stdout = app_handle.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        let mut pending_pairing = String::new();
-        let mut capturing = false;
+        let mut capturing_pairing_json = false;
+        let mut capturing_pairing_code = false;
 
         for line in reader.lines() {
             if let Ok(text) = line {
                 let trimmed = text.trim();
                 if !trimmed.is_empty() {
-                    add_log(&ah_stdout, "bridge", "info", trimmed);
+                    if trimmed.contains("Or paste this pairing code") {
+                        capturing_pairing_code = true;
+                        add_log(&ah_stdout, "bridge", "info", "Manual pairing code ready");
+                        continue;
+                    }
 
-                    // Detect pairing JSON output
                     if trimmed.contains("Pairing JSON") {
-                        capturing = true;
-                    } else if capturing {
-                        pending_pairing.push_str(trimmed);
-                        // Try to parse as JSON
+                        capturing_pairing_json = true;
+                        add_log(&ah_stdout, "bridge", "info", "Pairing QR payload ready");
+                        continue;
+                    }
+
+                    if capturing_pairing_code {
+                        let state = ah_pairing.state::<AppState>();
+                        if let Ok(mut pc) = state.pairing_code.lock() {
+                            *pc = Some(trimmed.to_string());
+                        }
+                        let _ = ah_pairing.emit("pairing-code-ready", trimmed);
+                        add_log(&ah_pairing, "app", "info", "Pairing code captured");
+                        capturing_pairing_code = false;
+                        continue;
+                    }
+
+                    if capturing_pairing_json {
                         if let Ok(payload) = serde_json::from_str::<serde_json::Value>(trimmed) {
                             if payload.get("relay").is_some() && payload.get("sessionId").is_some() {
                                 let state = ah_pairing.state::<AppState>();
@@ -905,11 +933,16 @@ fn start_bridge(app_handle: tauri::AppHandle) -> Result<String, String> {
                                 }
                                 let _ = ah_pairing.emit("pairing-ready", trimmed);
                                 add_log(&ah_pairing, "app", "info", "Pairing payload captured");
-                                capturing = false;
-                                pending_pairing.clear();
+                                capturing_pairing_json = false;
+                                continue;
                             }
                         }
+                        add_log(&ah_pairing, "app", "warning", "Failed to parse pairing payload");
+                        capturing_pairing_json = false;
+                        continue;
                     }
+
+                    add_log(&ah_stdout, "bridge", "info", trimmed);
                 }
             }
         }
@@ -933,6 +966,7 @@ fn start_bridge(app_handle: tauri::AppHandle) -> Result<String, String> {
         network: app_handle.state::<AppState>().selected_ip.lock().ok().map(|s| s.clone()).unwrap_or_default(),
         relay_url: relay_url.clone(),
         pairing_payload: None,
+        pairing_code: None,
         phone_connected: false,
     });
 
@@ -1076,6 +1110,7 @@ fn get_status(app_handle: tauri::AppHandle) -> Result<AppStatus, String> {
     let network = state.selected_ip.lock().map_err(|e| e.to_string())?.clone();
     let relay_url = state.relay_url.lock().map_err(|e| e.to_string())?.clone();
     let pairing_payload = state.pairing_payload.lock().map_err(|e| e.to_string())?.clone();
+    let pairing_code = state.pairing_code.lock().map_err(|e| e.to_string())?.clone();
     let phone_connected = state.phone_connected.lock().map_err(|e| e.to_string())?.clone();
 
     let relay_mode = state.config.lock().map_err(|e| e.to_string())?.relay_mode.clone();
@@ -1105,6 +1140,7 @@ fn get_status(app_handle: tauri::AppHandle) -> Result<AppStatus, String> {
         network,
         relay_url,
         pairing_payload,
+        pairing_code,
         phone_connected,
     })
 }
@@ -1284,6 +1320,7 @@ pub fn run() {
         selected_ip: Mutex::new(app_config.selected_ip.clone()),
         relay_url: Mutex::new(String::new()),
         phone_connected: Mutex::new(false),
+        pairing_code: Mutex::new(None),
         relay_intentional: Mutex::new(false),
         bridge_intentional: Mutex::new(false),
     };

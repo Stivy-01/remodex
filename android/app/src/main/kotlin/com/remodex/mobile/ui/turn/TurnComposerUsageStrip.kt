@@ -176,6 +176,10 @@ private fun ContextWindowStripLines(
         }
         else -> {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                LinearProgressIndicator(
+                    progress = { usage.fractionUsed.toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Text(
                     text =
                         stringResource(
@@ -186,10 +190,6 @@ private fun ContextWindowStripLines(
                         ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface,
-                )
-                LinearProgressIndicator(
-                    progress = { usage.fractionUsed.toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

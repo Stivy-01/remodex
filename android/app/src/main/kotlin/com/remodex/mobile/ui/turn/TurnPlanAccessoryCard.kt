@@ -2,13 +2,16 @@
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,6 +27,8 @@ import com.remodex.mobile.core.model.CodexMessageKind
 import com.remodex.mobile.core.model.CodexMessageRole
 import com.remodex.mobile.core.model.CodexPlanStep
 import com.remodex.mobile.core.model.CodexPlanStepStatus
+import com.remodex.mobile.ui.theme.isAgentLightChrome
+import com.valentinilk.shimmer.shimmer
 
 private const val PLAN_ACCESSORY_MAX_VISIBLE_STEPS = 4
 
@@ -38,23 +43,85 @@ internal fun TurnPlanAccessoryCard(
     canApplyPlan: Boolean = false,
     onApplyPlan: (() -> Unit)? = null,
     onOpenDetailsSheet: (() -> Unit)? = null,
+    floating: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val snapshot = PlanAccessorySnapshot.fromMessage(message)
+    val lightChrome = isAgentLightChrome()
     val statusTint =
-        when (snapshot.status) {
-            PlanAccessoryStatus.Pending -> MaterialTheme.colorScheme.tertiary
-            PlanAccessoryStatus.InProgress -> MaterialTheme.colorScheme.primary
-            PlanAccessoryStatus.Completed -> MaterialTheme.colorScheme.secondary
+        if (lightChrome) {
+            when (snapshot.status) {
+                PlanAccessoryStatus.Pending -> Color(0xFFE4C25F)
+                PlanAccessoryStatus.InProgress -> Color(0xFFF1D475)
+                PlanAccessoryStatus.Completed -> Color(0xFFAED2C0)
+            }
+        } else {
+            when (snapshot.status) {
+                PlanAccessoryStatus.Pending -> MaterialTheme.colorScheme.tertiary
+                PlanAccessoryStatus.InProgress -> MaterialTheme.colorScheme.primary
+                PlanAccessoryStatus.Completed -> MaterialTheme.colorScheme.secondary
+            }
         }
+    val activePlan = message.isStreaming || snapshot.status != PlanAccessoryStatus.Completed
+    val completedPlan = !message.isStreaming && snapshot.status == PlanAccessoryStatus.Completed
+    val planColor =
+        when {
+            activePlan && lightChrome -> {
+                Color(0xFF202326).copy(alpha = 0.94f)
+            }
+            activePlan -> {
+                Color(0xFF5A4312).copy(alpha = 0.50f)
+            }
+            completedPlan && lightChrome -> {
+                Color(0xFF25282B).copy(alpha = 0.92f)
+            }
+            completedPlan -> {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
+            }
+            else -> {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            }
+        }
+    val shimmerModifier =
+        if (activePlan || completedPlan) {
+            Modifier.shimmer()
+        } else {
+            Modifier
+        }
+    val contentTint =
+        if (lightChrome && (activePlan || completedPlan)) {
+            Color(0xFFF4F2EC)
+        } else {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        }
+    val secondaryContentTint = contentTint.copy(alpha = 0.72f)
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .then(shimmerModifier),
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+        color = planColor,
+        contentColor = contentTint,
+        shadowElevation = if (floating) 12.dp else 0.dp,
+        tonalElevation = if (floating) 4.dp else 0.dp,
     ) {
+        val bodyModifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .then(
+                    if (expanded) {
+                        Modifier
+                            .heightIn(max = 430.dp)
+                            .verticalScroll(rememberScrollState())
+                    } else {
+                        Modifier
+                    },
+                )
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = bodyModifier,
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Row(
@@ -75,12 +142,12 @@ internal fun TurnPlanAccessoryCard(
                 Text(
                     text = stringResource(R.string.turn_timeline_kind_plan),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = contentTint,
                 )
                 Text(
                     text = "·",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                    color = secondaryContentTint,
                 )
                 Text(
                     text =
@@ -96,14 +163,14 @@ internal fun TurnPlanAccessoryCard(
                     Text(
                         text = "· $progress",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                        color = contentTint.copy(alpha = 0.85f),
                     )
                 }
                 if (message.isStreaming) {
                     Text(
                         text = stringResource(R.string.turn_plan_status_streaming),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
+                        color = contentTint.copy(alpha = 0.82f),
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
@@ -154,12 +221,16 @@ internal fun TurnPlanAccessoryCard(
             Text(
                 text = snapshot.summary,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.92f),
+                color = contentTint.copy(alpha = 0.92f),
                 maxLines = if (expanded) 4 else 1,
             )
 
             if (snapshot.stepStatuses.isNotEmpty()) {
-                StepStatusRail(statuses = snapshot.stepStatuses, accent = statusTint)
+                StepStatusRail(
+                    statuses = snapshot.stepStatuses,
+                    accent = statusTint,
+                    completedTint = contentTint,
+                )
             }
 
             if (expanded) {
@@ -173,7 +244,7 @@ internal fun TurnPlanAccessoryCard(
                     Text(
                         text = "${index + 1}. [$statusLabel] ${step.step}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.95f),
+                        color = contentTint.copy(alpha = 0.95f),
                     )
                 }
                 val hiddenStepCount = snapshot.steps.size - PLAN_ACCESSORY_MAX_VISIBLE_STEPS
@@ -181,7 +252,7 @@ internal fun TurnPlanAccessoryCard(
                     Text(
                         text = stringResource(R.string.turn_plan_more_steps, hiddenStepCount),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f),
+                        color = secondaryContentTint,
                     )
                 }
             }
@@ -193,6 +264,7 @@ internal fun TurnPlanAccessoryCard(
 private fun StepStatusRail(
     statuses: List<CodexPlanStepStatus>,
     accent: Color,
+    completedTint: Color,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         statuses.forEach { status ->
@@ -200,7 +272,7 @@ private fun StepStatusRail(
                 when (status) {
                     CodexPlanStepStatus.pending -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                     CodexPlanStepStatus.inProgress -> accent.copy(alpha = 0.8f)
-                    CodexPlanStepStatus.completed -> MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                    CodexPlanStepStatus.completed -> completedTint.copy(alpha = 0.75f)
                 }
             Surface(
                 color = tint,
@@ -271,10 +343,22 @@ internal fun selectPinnedPlanAccessoryMessage(messages: List<CodexMessage>): Cod
         .firstOrNull { it.shouldDisplayPinnedPlanAccessory() }
 }
 
+internal fun selectCompletedPlanAccessoryMessage(messages: List<CodexMessage>): CodexMessage? {
+    return messages
+        .asReversed()
+        .firstOrNull { it.shouldDisplayCompletedPlanAccessory() }
+}
+
 internal fun CodexMessage.shouldDisplayPinnedPlanAccessory(): Boolean {
     if (role != CodexMessageRole.system || kind != CodexMessageKind.plan) return false
     if (isStreaming) return true
     val steps = planState?.steps.orEmpty()
     if (steps.isEmpty()) return false
     return steps.any { it.status != CodexPlanStepStatus.completed }
+}
+
+internal fun CodexMessage.shouldDisplayCompletedPlanAccessory(): Boolean {
+    if (role != CodexMessageRole.system || kind != CodexMessageKind.plan || isStreaming) return false
+    val steps = planState?.steps.orEmpty()
+    return steps.isNotEmpty() && steps.all { it.status == CodexPlanStepStatus.completed }
 }

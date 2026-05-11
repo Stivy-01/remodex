@@ -62,6 +62,10 @@ interface CodexRepository {
     val turnDraftQueuePreviewByThread: StateFlow<Map<String, List<QueuedTurnDraftPreview>>>
         get() = MutableStateFlow(emptyMap())
 
+    /** One-shot UI request to open the branch picker for a newly-created repo-bound thread. */
+    val pendingBranchPickerThreadId: StateFlow<String?>
+        get() = MutableStateFlow(null)
+
     /** Thread id → turn id in esecuzione (per UI Stop). */
     val runningTurnIdByThread: StateFlow<Map<String, String>>
 
@@ -227,6 +231,10 @@ interface CodexRepository {
         cwd: String? = null,
         serviceTier: String? = null,
     ): CodexThread
+
+    fun requestBranchPickerForThread(threadId: String) {}
+
+    fun consumeBranchPickerRequest(threadId: String) {}
 
     /**
      * Same-thread rebind: updates local [threads] + forces [thread/resume] with the preferred cwd
