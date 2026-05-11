@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -74,22 +75,23 @@ fun SidebarThreadRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
-            modifier = Modifier.size(width = 7.dp, height = 20.dp),
+            modifier = Modifier.size(width = 12.dp, height = 20.dp),
             contentAlignment = Alignment.Center,
         ) {
-            if (selected || isRunning) {
+            if (isRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(10.dp),
+                    strokeWidth = 1.5.dp,
+                    color = colors.primary,
+                    trackColor = colors.primary.copy(alpha = 0.18f),
+                )
+            } else if (selected) {
                 Box(
                     modifier =
                         Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(
-                                if (isRunning) {
-                                    colors.primary
-                                } else {
-                                    colors.primary.copy(alpha = 0.9f)
-                                },
-                            ),
+                            .background(colors.primary.copy(alpha = 0.9f)),
                 )
             }
         }

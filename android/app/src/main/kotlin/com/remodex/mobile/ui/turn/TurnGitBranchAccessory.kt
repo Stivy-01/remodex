@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -87,10 +88,30 @@ internal fun TurnGitBranchAccessory(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var createDialogOpen by rememberSaveable { mutableStateOf(false) }
     var newBranchName by rememberSaveable { mutableStateOf("") }
+    var lastLoadedState by remember {
+        mutableStateOf(state as? GitBranchPaneState.Loaded)
+    }
+    fun closeBranchPicker(cause: BranchPickerCloseCause) {
+        sheetOpen = false
+        searchQuery = ""
+        if (shouldConsumeBranchPickerOpenRequest(cause)) {
+            onOpenPickerRequestConsumed()
+        }
+    }
 
     LaunchedEffect(branchPickerEnabled, state) {
-        if (!branchPickerEnabled || state !is GitBranchPaneState.Loaded) {
-            sheetOpen = false
+        if (state is GitBranchPaneState.Loaded) {
+            lastLoadedState = state
+        }
+        if (state !is GitBranchPaneState.Loaded && state !is GitBranchPaneState.Loading) {
+            lastLoadedState = null
+        }
+        val isTransientLoading = state is GitBranchPaneState.Loading
+        val shouldCloseSheet =
+            (!branchPickerEnabled && !isTransientLoading) ||
+                (state !is GitBranchPaneState.Loaded && !isTransientLoading)
+        if (shouldCloseSheet) {
+            closeBranchPicker(BranchPickerCloseCause.StateInvalidated)
         }
     }
 
@@ -99,7 +120,6 @@ internal fun TurnGitBranchAccessory(
             searchQuery = ""
             sheetOpen = true
             onOpenBranchSelector()
-            onOpenPickerRequestConsumed()
         }
     }
 
@@ -107,27 +127,26 @@ internal fun TurnGitBranchAccessory(
         return
     }
 
-    if (sheetOpen && state is GitBranchPaneState.Loaded) {
+    val sheetLoadedState = (state as? GitBranchPaneState.Loaded) ?: lastLoadedState
+    if (sheetOpen && sheetLoadedState != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         ModalBottomSheet(
             onDismissRequest = {
-                sheetOpen = false
-                searchQuery = ""
+                closeBranchPicker(BranchPickerCloseCause.UserDismissed)
             },
             sheetState = sheetState,
         ) {
             GitBranchPickerSheetContent(
-                summary = state.summary,
+                summary = sheetLoadedState.summary,
                 searchQuery = searchQuery,
                 onSearchQueryChange = { searchQuery = it },
-                isSwitchingBranch = isSwitchingBranch,
+                isSwitchingBranch = isSwitchingBranch || state is GitBranchPaneState.Loading,
                 onRefresh = {
                     onRefreshBranches()
                 },
                 onSelectBranch = { branch ->
-                    sheetOpen = false
-                    searchQuery = ""
+                    closeBranchPicker(BranchPickerCloseCause.BranchSelected)
                     onCheckoutBranch(branch)
                 },
                 onOpenCreateBranch = {
@@ -150,8 +169,7 @@ internal fun TurnGitBranchAccessory(
                 newBranchName = ""
             },
             onCreate = { branch ->
-                sheetOpen = false
-                searchQuery = ""
+                closeBranchPicker(BranchPickerCloseCause.BranchCreated)
                 createDialogOpen = false
                 newBranchName = ""
                 onCreateBranch(branch)

@@ -66,15 +66,76 @@ internal suspend fun CodexService.startThreadInternal(
         beginAuthoritativeProjectPathTransition(patched.id, cwd)
         rememberAssociatedManagedWorktreePathIfWorktree(cwd, patched.id)
     }
-    publishThreads(upsertThreadRow(_threads.value, patched))
-    _activeThreadId.value = patched.id
-    sessionPersistence.saveLastActiveThreadId(patched.id)
-    if (normalizedCwd != null) {
-        requestBranchPickerForThread(patched.id)
+    return runNewThreadOpenFlow(
+        thread = patched,
+        normalizedCwd = normalizedCwd,
+        sink =
+            CodexServiceNewThreadOpenSink(
+                service = this,
+            ),
+    )
+}
+
+internal interface NewThreadOpenFlowSink {
+    suspend fun publishStartedThread(thread: CodexThread)
+
+    suspend fun forceResumeStartedThread(
+        thread: CodexThread,
+        normalizedCwd: String?,
+    ): CodexThread?
+
+    suspend fun syncStartedThreadHistory(threadId: String)
+
+    fun activateStartedThread(threadId: String)
+}
+
+internal suspend fun runNewThreadOpenFlow(
+    thread: CodexThread,
+    normalizedCwd: String?,
+    sink: NewThreadOpenFlowSink,
+): CodexThread {
+    sink.publishStartedThread(thread)
+    val resumed =
+        try {
+            sink.forceResumeStartedThread(
+                thread = thread,
+                normalizedCwd = normalizedCwd,
+            ) ?: thread
+        } catch (e: Exception) {
+            if (!shouldAllowProjectRebindWithoutResume(e)) throw e
+            thread
+        }
+    runCatching { sink.syncStartedThreadHistory(thread.id) }
+    sink.activateStartedThread(thread.id)
+    return resumed
+}
+
+private class CodexServiceNewThreadOpenSink(
+    private val service: CodexService,
+) : NewThreadOpenFlowSink {
+    override suspend fun publishStartedThread(thread: CodexThread) {
+        service.publishThreads(upsertThreadRow(service._threads.value, thread))
     }
-    resumedThreadIds.add(patched.id)
-    runCatching { syncThreadHistoryInternal(patched.id, force = true) }
-    return patched
+
+    override suspend fun forceResumeStartedThread(
+        thread: CodexThread,
+        normalizedCwd: String?,
+    ): CodexThread? =
+        service.ensureThreadResumedInternal(
+            threadId = thread.id,
+            force = true,
+            preferredProjectPath = normalizedCwd,
+            modelIdentifierOverride = thread.model,
+        )
+
+    override suspend fun syncStartedThreadHistory(threadId: String) {
+        service.syncThreadHistoryInternal(threadId, force = true)
+    }
+
+    override fun activateStartedThread(threadId: String) {
+        service._activeThreadId.value = threadId
+        service.sessionPersistence.saveLastActiveThreadId(threadId)
+    }
 }
 
 internal fun applyRequestedProjectPathForNewThread(

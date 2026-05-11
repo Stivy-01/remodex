@@ -43,6 +43,13 @@ interface DebugInfo {
   node_version: string;
 }
 
+interface UpdateInfo {
+  version: string;
+  current_version: string;
+  date: string | null;
+  body: string | null;
+}
+
 type View = "dashboard" | "network" | "logs" | "settings" | "debug";
 
 interface AppConfig {
@@ -131,6 +138,8 @@ function App() {
   const [phoneConnected, setPhoneConnected] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
   const [firewallWarning, setFirewallWarning] = useState<{ ip: string; port: number; message: string } | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "installing">("idle");
   const [settings, setSettings] = useState<AppConfig>({
     relay_mode: "local",
     selected_ip: "",
@@ -236,6 +245,13 @@ function App() {
     return () => {
       unlistenFn?.();
     };
+  }, [tauriReady]);
+
+  useEffect(() => {
+    if (!tauriReady) return;
+    invoke<UpdateInfo | null>("check_for_update")
+      .then(setUpdateInfo)
+      .catch(() => {});
   }, [tauriReady]);
 
   // Listen for manual pairing code
@@ -387,7 +403,9 @@ function App() {
         if (s.pairing_code) {
           setPairingCode(s.pairing_code);
         }
-      } catch (_) {}
+      } catch {
+        return;
+      }
     };
     poll();
     const interval = setInterval(poll, 3000);
@@ -508,7 +526,9 @@ function App() {
     try {
       await invoke("clear_logs");
       setLogs([]);
-    } catch (_) {}
+    } catch {
+      return;
+    }
   };
 
   const handleDebug = async () => {
@@ -561,6 +581,36 @@ function App() {
   const handleCopyUrl = async () => {
     if (status.relay_url) {
       await navigator.clipboard.writeText(status.relay_url);
+    }
+  };
+
+  const handleCheckForUpdate = async () => {
+    if (!tauriReady || updateStatus !== "idle") return;
+    setUpdateStatus("checking");
+    try {
+      const update = await invoke<UpdateInfo | null>("check_for_update");
+      setUpdateInfo(update);
+      addLog({
+        timestamp: new Date().toLocaleTimeString(),
+        source: "app",
+        level: "info",
+        message: update ? `Update available: ${update.version}` : "No update available.",
+      });
+    } catch (e) {
+      logError(`Update check failed: ${e}`);
+    } finally {
+      setUpdateStatus("idle");
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!tauriReady || updateStatus !== "idle") return;
+    setUpdateStatus("installing");
+    try {
+      await invoke("install_update");
+    } catch (e) {
+      setUpdateStatus("idle");
+      logError(`Update install failed: ${e}`);
     }
   };
 
@@ -666,6 +716,45 @@ function App() {
             }}
           >
             x
+          </button>
+        </div>
+      )}
+
+      {updateInfo && (
+        <div
+          style={{
+            background: "#4F8CFF15",
+            border: "1px solid #4F8CFF35",
+            borderRadius: "6px",
+            padding: "8px 10px",
+            fontSize: "11px",
+            color: "var(--text-primary)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "8px",
+          }}
+        >
+          <span style={{ color: "var(--text-secondary)" }}>
+            Remodex Host {updateInfo.version} is available.
+          </span>
+          <button
+            onClick={handleInstallUpdate}
+            disabled={updateStatus !== "idle"}
+            style={{
+              background: "var(--accent-blue)",
+              border: "none",
+              borderRadius: "4px",
+              color: "#fff",
+              cursor: updateStatus === "idle" ? "pointer" : "default",
+              fontSize: "10px",
+              fontWeight: 600,
+              padding: "5px 8px",
+              whiteSpace: "nowrap",
+              opacity: updateStatus === "idle" ? 1 : 0.7,
+            }}
+          >
+            {updateStatus === "installing" ? "Installing..." : "Install"}
           </button>
         </div>
       )}
@@ -1328,6 +1417,45 @@ function App() {
                 outline: "none",
               }}
             />
+          </div>
+
+          <div
+            style={{
+              marginBottom: "12px",
+              padding: "10px",
+              background: "var(--bg-primary)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "6px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <div>
+                <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-primary)" }}>
+                  Updates
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--text-secondary)", marginTop: "3px" }}>
+                  {updateInfo
+                    ? `Version ${updateInfo.version} available`
+                    : updateStatus === "checking"
+                      ? "Checking..."
+                      : "No pending update"}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <ActionBtn
+                  label={updateStatus === "checking" ? "Checking..." : "Check"}
+                  color="#4F8CFF"
+                  onClick={handleCheckForUpdate}
+                  disabled={!tauriReady || updateStatus !== "idle"}
+                />
+                <ActionBtn
+                  label={updateStatus === "installing" ? "Installing..." : "Install"}
+                  color="#35C759"
+                  onClick={handleInstallUpdate}
+                  disabled={!updateInfo || !tauriReady || updateStatus !== "idle"}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Save */}

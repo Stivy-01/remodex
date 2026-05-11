@@ -69,6 +69,22 @@ class TurnComposerToolbarActionsBuilderTest {
                 ),
             )
         assertTrue(actions.sendShowsProgress)
+        assertTrue(actions.stopButtonVisible)
+        assertTrue(actions.stopButtonEnabled)
+        assertFalse(actions.sendButtonEnabled)
+    }
+
+    @Test
+    fun build_threadRunning_showsStopControlWithoutSendingSpinner() {
+        val actions =
+            TurnComposerToolbarActionsBuilder.build(
+                TurnComposerModel(
+                    threadRunning = true,
+                ),
+            )
+        assertTrue(actions.stopButtonVisible)
+        assertTrue(actions.stopButtonEnabled)
+        assertFalse(actions.sendShowsProgress)
         assertFalse(actions.sendButtonEnabled)
     }
 }

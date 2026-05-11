@@ -153,7 +153,6 @@ fun TurnConversationPane(
     val protectedRunningFallback by repository.protectedRunningFallbackThreadIds.collectAsStateWithLifecycle()
     val queuedDraftDepthByThread by repository.turnDraftQueueDepthByThread.collectAsStateWithLifecycle()
     val queuedDraftPreviewByThread by repository.turnDraftQueuePreviewByThread.collectAsStateWithLifecycle()
-    val pendingBranchPickerThreadId by repository.pendingBranchPickerThreadId.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val aiChangeSetPersistence = LocalAIChangeSetPersistence.current
@@ -212,7 +211,6 @@ fun TurnConversationPane(
         }
     var gitBranchPaneState by remember(threadId) { mutableStateOf<GitBranchPaneState>(GitBranchPaneState.UnavailableNoProject) }
     var gitBranchReloadNonce by remember(threadId) { mutableIntStateOf(0) }
-    var branchPickerOpenRequestKey by remember(threadId) { mutableIntStateOf(0) }
     var isSwitchingGitBranch by remember(threadId) { mutableStateOf(false) }
     var isHandingOffWorktree by remember(threadId) { mutableStateOf(false) }
     var gitBranchCheckoutError by remember(threadId) { mutableStateOf<String?>(null) }
@@ -699,12 +697,6 @@ fun TurnConversationPane(
                         },
                     )
             }
-        }
-    }
-
-    LaunchedEffect(threadId, pendingBranchPickerThreadId, branchPickerEnabled) {
-        if (pendingBranchPickerThreadId == threadId && branchPickerEnabled) {
-            branchPickerOpenRequestKey++
         }
     }
 
@@ -1213,6 +1205,19 @@ fun TurnConversationPane(
                         lastError = com.remodex.mobile.ui.turn.formatTurnSendError(e)
                     }
                 }
+        }
+    }
+
+    fun stopActiveTurn() {
+        scope.launch {
+            runCatching {
+                repository.interruptTurn(
+                    threadId = threadId,
+                    turnId = activeTurnId,
+                )
+            }.onFailure { e ->
+                lastError = com.remodex.mobile.ui.turn.formatTurnSendError(e)
+            }
         }
     }
 
@@ -1760,6 +1765,7 @@ fun TurnConversationPane(
                     }
                 }
             },
+            onStopTurn = { stopActiveTurn() },
             voiceUiEnabled = voiceInteractionEnabled,
             voiceAudioLevels = voiceAudioLevels,
             voiceRecordingDurationSeconds = voiceRecordingDurationSeconds,
@@ -1898,10 +1904,6 @@ fun TurnConversationPane(
                                     screen = "branch_selector",
                                 )
                             }
-                        },
-                        openPickerRequestKey = branchPickerOpenRequestKey,
-                        onOpenPickerRequestConsumed = {
-                            repository.consumeBranchPickerRequest(threadId)
                         },
                     )
                 }

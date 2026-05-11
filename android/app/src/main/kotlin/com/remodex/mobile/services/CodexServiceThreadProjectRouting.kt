@@ -54,7 +54,9 @@ internal fun shouldAllowProjectRebindWithoutResume(error: Throwable): Boolean {
             else -> (error.message ?: error.toString()).lowercase()
         }
     if (message == null) return false
-    return message.contains("no rollout found") || message.contains("no rollout file found")
+    return message.contains("no rollout found") ||
+        message.contains("no rollout file found") ||
+        (message.contains("rollout") && message.contains("is empty"))
 }
 
 internal fun CodexService.applyAuthoritativeProjectPathToServerThread(thread: CodexThread) =

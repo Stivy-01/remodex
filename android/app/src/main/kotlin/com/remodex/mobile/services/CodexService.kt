@@ -273,7 +273,7 @@ class CodexService(
     override val olderHistoryErrorByThread: StateFlow<Map<String, String>> =
         _olderHistoryErrorByThread.asStateFlow()
 
-    /** Thread ids that already received a successful `thread/resume` (or `thread/start`) this session — parity iOS `resumedThreadIDs`. */
+    /** Thread ids that already received a successful `thread/resume` this session — parity iOS `resumedThreadIDs`. */
     internal val resumedThreadIds = Collections.synchronizedSet(mutableSetOf<String>())
 
     /**

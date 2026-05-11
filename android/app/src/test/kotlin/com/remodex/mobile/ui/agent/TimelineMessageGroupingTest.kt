@@ -6,6 +6,7 @@ import com.remodex.mobile.core.model.CodexMessageRole
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -111,6 +112,50 @@ class TimelineMessageGroupingTest {
         assertEquals(2, items.size)
         assertIs<TimelineListItem.Single>(items[0])
         assertIs<TimelineListItem.FileChangeGroup>(items[1]).also { assertEquals(4, it.messages.size) }
+    }
+
+    @Test
+    fun trailingAssistantActions_onlyShowAfterAssistantTurnCompletes() {
+        val completedAssistant =
+            CodexMessage(
+                id = "as-complete",
+                threadId = "t1",
+                role = CodexMessageRole.assistant,
+                kind = CodexMessageKind.chat,
+                text = "done",
+                createdAt = t0,
+                isStreaming = false,
+            )
+        val streamingAssistant = completedAssistant.copy(id = "as-streaming", isStreaming = true)
+
+        assertTrue(
+            shouldShowAssistantTrailingActions(
+                lastAssistantMessage = completedAssistant,
+                isAssistantTurnActive = false,
+                onForkThreadAvailable = true,
+            ),
+        )
+        assertFalse(
+            shouldShowAssistantTrailingActions(
+                lastAssistantMessage = completedAssistant,
+                isAssistantTurnActive = true,
+                onForkThreadAvailable = true,
+            ),
+        )
+        assertFalse(
+            shouldShowAssistantTrailingActions(
+                lastAssistantMessage = streamingAssistant,
+                isAssistantTurnActive = false,
+                onForkThreadAvailable = true,
+            ),
+        )
+        assertFalse(
+            shouldShowAssistantTrailingActions(
+                lastAssistantMessage = completedAssistant,
+                isAssistantTurnActive = false,
+                onForkThreadAvailable = false,
+            ),
+        )
     }
 
     @Test

@@ -92,6 +92,7 @@ internal fun TurnComposerBar(
     onRemoveMentionChip: (ComposerMentionChipPayload) -> Unit = {},
     onSelectAutocomplete: (TurnComposerAutocompleteItem) -> Unit = {},
     onSend: () -> Unit,
+    onStopTurn: () -> Unit = {},
     voiceUiEnabled: Boolean = false,
     voiceAudioLevels: List<Float> = emptyList(),
     voiceRecordingDurationSeconds: Double = 0.0,
@@ -402,7 +403,29 @@ internal fun TurnComposerBar(
                         modifier = Modifier.size(33.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (actions.sendShowsProgress) {
+                        if (actions.stopButtonVisible) {
+                            val stopCd = stringResource(R.string.turn_stop)
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .size(33.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
+                                        .clickable(
+                                            enabled = actions.stopButtonEnabled,
+                                            onClick = onStopTurn,
+                                        )
+                                        .semantics { contentDescription = stopCd },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = painterResource(LucideR.drawable.lucide_ic_circle_stop),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(19.dp),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        } else if (actions.sendShowsProgress) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(22.dp),
                                 strokeWidth = 2.dp,

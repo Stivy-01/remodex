@@ -7,6 +7,8 @@ package com.remodex.mobile.ui.turn
 internal data class TurnComposerToolbarActions(
     val sendButtonEnabled: Boolean,
     val sendShowsProgress: Boolean,
+    val stopButtonVisible: Boolean,
+    val stopButtonEnabled: Boolean,
     val textFieldEnabled: Boolean,
     val voiceControlEnabled: Boolean,
     val voiceIcon: TurnComposerVoiceToolbarIcon,
@@ -48,6 +50,8 @@ internal object TurnComposerToolbarActionsBuilder {
         return TurnComposerToolbarActions(
             sendButtonEnabled = d.canSend,
             sendShowsProgress = d.showsSending,
+            stopButtonVisible = model.sending || model.threadRunning,
+            stopButtonEnabled = model.enabled && (model.sending || model.threadRunning),
             textFieldEnabled = d.canEditText,
             voiceControlEnabled = voiceControlEnabled,
             voiceIcon = icon,
