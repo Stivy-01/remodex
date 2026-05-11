@@ -10,10 +10,12 @@ import android.net.Uri
 import android.util.Base64
 import com.remodex.mobile.core.model.CodexImageAttachment
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 internal object TurnAttachmentCodec {
+    private const val MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
     private const val MAX_PAYLOAD_DIMENSION = 1600
     private const val THUMBNAIL_SIDE = 70
     private const val JPEG_QUALITY = 80
@@ -24,7 +26,7 @@ internal object TurnAttachmentCodec {
     ): CodexImageAttachment? {
         val sourceData =
             context.contentResolver.openInputStream(uri)?.use { input ->
-                input.readBytes()
+                input.readAtMost(MAX_ATTACHMENT_BYTES) ?: return null
             } ?: return null
         return makeAttachment(sourceData, sourceUrl = uri.toString())
     }
@@ -69,7 +71,9 @@ internal object TurnAttachmentCodec {
         val metadata = dataUri.substring(0, commaIndex).lowercase()
         if (!metadata.startsWith("data:image") || !metadata.contains(";base64")) return null
         val base64Part = dataUri.substring(commaIndex + 1)
+        if (base64Part.length > encodedBase64Limit(MAX_ATTACHMENT_BYTES)) return null
         return runCatching { Base64.decode(base64Part, Base64.DEFAULT) }.getOrNull()
+            ?.takeIf { it.size <= MAX_ATTACHMENT_BYTES }
     }
 
     private fun normalizePayloadJpeg(sourceData: ByteArray): ByteArray? {
@@ -135,6 +139,23 @@ internal object TurnAttachmentCodec {
         }
         return out.toByteArray()
     }
+
+    private fun InputStream.readAtMost(maxBytes: Int): ByteArray? {
+        val out = ByteArrayOutputStream(minOf(maxBytes, DEFAULT_BUFFER_SIZE))
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0
+        while (true) {
+            val read = read(buffer)
+            if (read == -1) break
+            total += read
+            if (total > maxBytes) return null
+            out.write(buffer, 0, read)
+        }
+        return out.toByteArray()
+    }
+
+    private fun encodedBase64Limit(decodedBytes: Int): Int =
+        ((decodedBytes + 2) / 3) * 4 + 128
 
     private fun calculateInSampleSize(
         width: Int,

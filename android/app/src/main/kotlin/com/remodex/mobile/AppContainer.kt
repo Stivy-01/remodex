@@ -56,6 +56,9 @@ object AppContainer {
     lateinit var httpClient: OkHttpClient
         private set
 
+    lateinit var httpCallClient: OkHttpClient
+        private set
+
     lateinit var codexRepository: CodexRepository
         private set
 
@@ -69,17 +72,26 @@ object AppContainer {
         messagePersistence = CodexMessagePersistence(app, secureStore)
         aiChangeSetPersistence = AIChangeSetPersistence(app)
         sessionPersistence = SessionPersistence(secureStore, app)
-        httpClient =
+        httpCallClient =
             OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .callTimeout(30, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(false)
+                .build()
+        httpClient =
+            httpCallClient.newBuilder()
                 .pingInterval(30, TimeUnit.SECONDS)
-                .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
+                .callTimeout(0, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
                 .build()
         codexRepository =
             CodexService(
                 context = app,
                 httpClient = httpClient,
+                httpCallClient = httpCallClient,
                 secureStore = secureStore,
                 sessionPersistence = sessionPersistence,
                 messagePersistence = messagePersistence,
@@ -88,7 +100,7 @@ object AppContainer {
         val betaApi =
             if (FeatureFlags.betaEngagementEnabled) {
                 BetaEngagementClient(
-                    httpClient = httpClient,
+                    httpClient = httpCallClient,
                     baseUrl = BuildConfig.BETA_API_BASE_URL,
                     apiKey = BuildConfig.BETA_API_KEY,
                 )

@@ -101,7 +101,7 @@ internal suspend fun CodexService.transcribeBridgeVoiceWavImpl(
             byteCount = wavBytes.size,
             durationSeconds = durationSeconds,
         ).validate()
-        val client = GptVoiceTranscriptionClient(httpClient)
+        val client = GptVoiceTranscriptionClient(httpCallClient)
         transcribeWavWithSingleAuthRetry(
             wavBytes = wavBytes,
             resolveToken = { resolveVoiceAuthToken() },

@@ -17,6 +17,7 @@ import com.remodex.mobile.core.model.SecureReadyMessage
 import com.remodex.mobile.core.model.SecureResumeState
 import com.remodex.mobile.core.model.SecureServerHello
 import com.remodex.mobile.core.model.base64DecodeOrEmpty
+import com.remodex.mobile.core.model.base64DecodeOrNull
 import com.remodex.mobile.core.model.codexClientAuthTranscript
 import com.remodex.mobile.core.model.codexSecureNonce
 import com.remodex.mobile.core.model.codexSecureTranscriptBytes
@@ -40,13 +41,22 @@ private const val MAX_SECURE_PLAINTEXT_BYTES = 1 * 1024 * 1024
  * Mirrors [CodexService+SecureTransport.swift](../../../../../../../../CodexMobile/CodexMobile/Services/CodexService+SecureTransport.swift).
  */
 internal fun CodexService.secureWireText(plaintext: String): String {
-    val sess = secureSession ?: throw CodexSecureTransportError.InvalidHandshake("The secure Remodex session is not ready yet. Try reconnecting.")
+    val sess =
+        synchronized(secureSessionLock) {
+            val current =
+                secureSession
+                    ?: throw CodexSecureTransportError.InvalidHandshake("The secure Remodex session is not ready yet. Try reconnecting.")
+            if (current.nextOutboundCounter == Int.MAX_VALUE) {
+                throw CodexSecureTransportError.InvalidHandshake("The secure Remodex session reached its message limit. Reconnect and try again.")
+            }
+            secureSession = current.copy(nextOutboundCounter = current.nextOutboundCounter + 1)
+            current
+        }
     val inner = SecureApplicationPayload(bridgeOutboundSeq = null, payloadText = plaintext)
     val payloadBytes = json.encodeToString(SecureApplicationPayload.serializer(), inner).encodeToByteArray()
     val counter = sess.nextOutboundCounter
     val nonce = codexSecureNonce(SECURE_ENVELOPE_MOBILE_SENDER, counter)
     val (ct, tag) = SecureEnvelopeCipher.seal(sess.phoneToMacKey, nonce, payloadBytes)
-    sess.nextOutboundCounter = counter + 1
     val env =
         SecureEnvelope(
             kind = "encryptedEnvelope",
@@ -66,6 +76,7 @@ internal fun CodexService.handleEncryptedEnvelope(raw: String) {
     val envelope = runCatching { json.decodeFromString<SecureEnvelope>(raw) }.getOrNull() ?: return
     if (envelope.sessionId != sess.sessionId || envelope.keyEpoch != sess.keyEpoch) return
     if (envelope.sender != "mac") return
+    if (envelope.counter < 0) return
     if (envelope.counter <= sess.lastInboundCounter) return
     if (
         envelope.ciphertext.length > MAX_CIPHERTEXT_BASE64_LENGTH ||
@@ -84,18 +95,30 @@ internal fun CodexService.handleEncryptedEnvelope(raw: String) {
         ) ?: return
     if (plaintext.size > MAX_SECURE_PLAINTEXT_BYTES) return
 
-    sess.lastInboundCounter = envelope.counter
     val payload =
         runCatching {
             json.decodeFromString<SecureApplicationPayload>(plaintext.decodeToString())
         }.getOrNull() ?: return
 
-    payload.bridgeOutboundSeq?.let { seq ->
-        if (seq <= sess.lastInboundBridgeOutboundSeq) {
-            return
+    synchronized(secureSessionLock) {
+        val current = secureSession ?: return
+        if (current.sessionId != envelope.sessionId || current.keyEpoch != envelope.keyEpoch) return
+        if (envelope.counter <= current.lastInboundCounter) return
+        val nextBridgeSeq =
+            payload.bridgeOutboundSeq?.let { seq ->
+                if (seq <= current.lastInboundBridgeOutboundSeq) {
+                    return
+                }
+                seq
+            } ?: current.lastInboundBridgeOutboundSeq
+        secureSession =
+            current.copy(
+                lastInboundCounter = envelope.counter,
+                lastInboundBridgeOutboundSeq = nextBridgeSeq,
+            )
+        payload.bridgeOutboundSeq?.let { seq ->
+            secureStore.writeString(CodexSecureKeys.relayLastAppliedBridgeOutboundSeq, seq.toString())
         }
-        sess.lastInboundBridgeOutboundSeq = seq
-        secureStore.writeString(CodexSecureKeys.relayLastAppliedBridgeOutboundSeq, seq.toString())
     }
 
     val innerRpc = jsonRpc.decodeMessage(payload.payloadText) ?: return
@@ -189,7 +212,7 @@ internal suspend fun CodexService.performSecureHandshake() {
         throw CodexSecureTransportError.InvalidHandshake("The secure Mac identity key did not match the paired device.")
     }
 
-    val serverNonceBytes = base64DecodeOrEmpty(serverHello.serverNonce)
+    val serverNonceBytes = decodeHandshakeBase64(serverHello.serverNonce, "serverNonce")
     val transcriptBytes =
         codexSecureTranscriptBytes(
             sessionId = sessionId,
@@ -207,13 +230,13 @@ internal suspend fun CodexService.performSecureHandshake() {
             expiresAtForTranscript = serverHello.expiresAtForTranscript,
         )
 
-    val macPubBytes = base64DecodeOrEmpty(serverHello.macIdentityPublicKey)
-    val macSigBytes = base64DecodeOrEmpty(serverHello.macSignature)
+    val macPubBytes = decodeHandshakeBase64(serverHello.macIdentityPublicKey, "macIdentityPublicKey")
+    val macSigBytes = decodeHandshakeBase64(serverHello.macSignature, "macSignature")
     if (!RemodexNativeCrypto.ed25519Verify(transcriptBytes, macSigBytes, macPubBytes)) {
         throw CodexSecureTransportError.InvalidHandshake("The secure Mac signature could not be verified.")
     }
 
-    val phonePriv = base64DecodeOrEmpty(phone.phoneIdentityPrivateKey)
+    val phonePriv = decodeHandshakeBase64(phone.phoneIdentityPrivateKey, "phoneIdentityPrivateKey")
     val clientAuthTranscript = codexClientAuthTranscript(transcriptBytes)
     val phoneSig = RemodexNativeCrypto.ed25519Sign(clientAuthTranscript, phonePriv)
     val clientAuth =
@@ -234,7 +257,7 @@ internal suspend fun CodexService.performSecureHandshake() {
     val shared =
         RemodexNativeCrypto.x25519SharedSecret(
             ephPriv,
-            base64DecodeOrEmpty(serverHello.macEphemeralPublicKey),
+            decodeHandshakeBase64(serverHello.macEphemeralPublicKey, "macEphemeralPublicKey"),
         )
     val salt = RemodexNativeCrypto.sha256(transcriptBytes)
     val infoPrefix =
@@ -361,8 +384,9 @@ private fun CodexService.isMatchingLegacyServerHello(
     if (hello.sessionId != expectedSessionId) return false
     if (hello.macDeviceId != expectedMacDeviceId) return false
     if (hello.macIdentityPublicKey != expectedMacIdentityPublicKey) return false
-    val macPub = base64DecodeOrEmpty(hello.macIdentityPublicKey)
-    if (macPub.isEmpty()) return false
+    val macPub = base64DecodeOrNull(hello.macIdentityPublicKey) ?: return false
+    val serverNonce = base64DecodeOrNull(hello.serverNonce) ?: return false
+    val macSignature = base64DecodeOrNull(hello.macSignature) ?: return false
     val transcriptBytes =
         codexSecureTranscriptBytes(
             sessionId = expectedSessionId,
@@ -376,15 +400,22 @@ private fun CodexService.isMatchingLegacyServerHello(
             macEphemeralPublicKey = hello.macEphemeralPublicKey,
             phoneEphemeralPublicKey = phoneEphemeralPublicKey,
             clientNonce = clientNonce,
-            serverNonce = base64DecodeOrEmpty(hello.serverNonce),
+            serverNonce = serverNonce,
             expiresAtForTranscript = hello.expiresAtForTranscript,
         )
     return RemodexNativeCrypto.ed25519Verify(
         transcriptBytes,
-        base64DecodeOrEmpty(hello.macSignature),
+        macSignature,
         macPub,
     )
 }
+
+private fun decodeHandshakeBase64(
+    value: String,
+    fieldName: String,
+): ByteArray =
+    base64DecodeOrNull(value)
+        ?: throw CodexSecureTransportError.InvalidHandshake("The secure bridge sent invalid $fieldName metadata.")
 
 private suspend fun CodexService.waitMatchingSecureReady(
     expectedSessionId: String,

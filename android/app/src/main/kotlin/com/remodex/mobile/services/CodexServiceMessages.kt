@@ -1,5 +1,6 @@
 package com.remodex.mobile.services
 
+import android.util.Log
 import android.content.pm.PackageManager
 import com.remodex.mobile.core.error.CodexServiceError
 import com.remodex.mobile.core.model.JSONValue
@@ -8,6 +9,8 @@ import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
+
+private const val REMODEX_WIRE_LOG_TAG = "RemodexWire"
 
 /**
  * Mirrors [CodexService+Messages.swift](../../../../../../../../CodexMobile/CodexMobile/Services/CodexService+Messages.swift).
@@ -77,7 +80,8 @@ private fun CodexService.wireMessageKind(text: String): String? =
     try {
         val el = json.parseToJsonElement(text)
         (el as? JsonObject)?.get("kind")?.jsonPrimitive?.content
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        Log.w(REMODEX_WIRE_LOG_TAG, "dropped malformed secure-control message bytes=${text.toByteArray().size}: ${e.javaClass.simpleName}")
         null
     }
 

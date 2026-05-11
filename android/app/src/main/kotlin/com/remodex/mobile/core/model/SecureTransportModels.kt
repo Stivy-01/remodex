@@ -177,9 +177,9 @@ data class CodexSecureSession(
     val macIdentityPublicKey: String,
     val phoneToMacKey: ByteArray,
     val macToPhoneKey: ByteArray,
-    var lastInboundBridgeOutboundSeq: Int,
-    var lastInboundCounter: Int,
-    var nextOutboundCounter: Int,
+    val lastInboundBridgeOutboundSeq: Int,
+    val lastInboundCounter: Int,
+    val nextOutboundCounter: Int,
 )
 
 /** Handshake state between hello and ready (ephemeral key material as raw bytes until crypto layer lands). */
@@ -376,10 +376,13 @@ fun codexSecureFingerprint(publicKeyBase64: String): String {
 }
 
 fun base64DecodeOrEmpty(value: String): ByteArray =
+    base64DecodeOrNull(value) ?: ByteArray(0)
+
+fun base64DecodeOrNull(value: String): ByteArray? =
     try {
         Base64.getDecoder().decode(value)
     } catch (_: IllegalArgumentException) {
-        ByteArray(0)
+        null
     }
 
 private fun ByteArrayOutputStream.appendLengthPrefixedUtf8(value: String) {
