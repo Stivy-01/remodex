@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
         val tid =
             intent?.getStringExtra(RemodexLocalNotificationPresenter.EXTRA_THREAD_ID)?.trim()
                 ?: return
-        if (tid.isNotEmpty()) {
+        if (tid.isNotEmpty() && RemodexLocalNotificationPresenter.consumeLaunchToken(this, intent, tid)) {
             AppContainer.setPendingOpenThreadFromNotification(tid)
         }
     }

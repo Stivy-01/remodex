@@ -229,7 +229,7 @@ fun QrScannerScreen(
                         }
                         val resolved =
                             resolvePairingCode(
-                                httpClient = AppContainer.httpClient,
+                                httpClient = AppContainer.httpCallClient,
                                 relayUrl = relay,
                                 code = raw,
                             )

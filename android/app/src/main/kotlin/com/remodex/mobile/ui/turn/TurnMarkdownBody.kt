@@ -46,6 +46,7 @@ import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.TurnTimelineCacheKey
+import java.net.URI
 import kotlinx.coroutines.launch
 
 private const val CODE_BLOCK_PREVIEW_MAX_LINES = 160
@@ -74,7 +75,7 @@ fun TurnMarkdownBody(
                     val trimmed = uri.trim()
                     if (RepoMarkdownFileLink.looksLikeLinkToLocalRepoFile(trimmed)) {
                         dispatchRepoDiff(trimmed)
-                    } else {
+                    } else if (MarkdownUrlPolicy.isAllowedLink(trimmed)) {
                         runCatching { defaultUriHandler.openUri(trimmed) }
                     }
                 }
@@ -170,6 +171,17 @@ fun TurnMarkdownBody(
                 }
             }
         }
+    }
+}
+
+internal object MarkdownUrlPolicy {
+    private val allowedLinkSchemes = setOf("http", "https", "mailto")
+
+    fun isAllowedLink(raw: String): Boolean {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return false
+        val scheme = runCatching { URI(trimmed).scheme?.lowercase() }.getOrNull()
+        return scheme != null && scheme in allowedLinkSchemes
     }
 }
 

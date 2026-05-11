@@ -14,6 +14,7 @@ const val CODEX_SECURE_HANDSHAKE_TAG = "remodex-e2ee-v1"
 const val CODEX_SECURE_HANDSHAKE_LABEL = "client-auth"
 const val CODEX_SECURE_CLOCK_SKEW_TOLERANCE_SECONDS = 60.0
 const val CODEX_TRUSTED_SESSION_RESOLVE_TAG = "remodex-trusted-session-resolve-v1"
+const val CODEX_TRUSTED_SESSION_RESOLVE_RESPONSE_TAG = "remodex-trusted-session-resolve-response-v1"
 const val CODEX_TRUSTED_SESSION_RESOLVE_CLOCK_SKEW_TOLERANCE_SECONDS = 90.0
 
 @Serializable
@@ -176,9 +177,9 @@ data class CodexSecureSession(
     val macIdentityPublicKey: String,
     val phoneToMacKey: ByteArray,
     val macToPhoneKey: ByteArray,
-    var lastInboundBridgeOutboundSeq: Int,
-    var lastInboundCounter: Int,
-    var nextOutboundCounter: Int,
+    val lastInboundBridgeOutboundSeq: Int,
+    val lastInboundCounter: Int,
+    val nextOutboundCounter: Int,
 )
 
 /** Handshake state between hello and ready (ephemeral key material as raw bytes until crypto layer lands). */
@@ -206,6 +207,8 @@ data class CodexTrustedSessionResolveResponse(
     val macIdentityPublicKey: String,
     val displayName: String? = null,
     val sessionId: String,
+    val responseTimestamp: Long,
+    val signature: String,
 )
 
 @Serializable
@@ -282,6 +285,31 @@ fun codexTrustedSessionResolveTranscriptBytes(
     return out.toByteArray()
 }
 
+fun codexTrustedSessionResolveResponseTranscriptBytes(
+    macDeviceId: String,
+    macIdentityPublicKey: String,
+    displayName: String?,
+    sessionId: String,
+    phoneDeviceId: String,
+    phoneIdentityPublicKey: String,
+    nonce: String,
+    timestamp: Long,
+    responseTimestamp: Long,
+): ByteArray {
+    val out = ByteArrayOutputStream()
+    out.appendLengthPrefixedUtf8(CODEX_TRUSTED_SESSION_RESOLVE_RESPONSE_TAG)
+    out.appendLengthPrefixedUtf8(macDeviceId)
+    out.appendLengthPrefixedData(base64DecodeOrEmpty(macIdentityPublicKey))
+    out.appendLengthPrefixedUtf8(displayName.orEmpty())
+    out.appendLengthPrefixedUtf8(sessionId)
+    out.appendLengthPrefixedUtf8(phoneDeviceId)
+    out.appendLengthPrefixedData(base64DecodeOrEmpty(phoneIdentityPublicKey))
+    out.appendLengthPrefixedUtf8(nonce)
+    out.appendLengthPrefixedUtf8(timestamp.toString())
+    out.appendLengthPrefixedUtf8(responseTimestamp.toString())
+    return out.toByteArray()
+}
+
 fun codexSecureTranscriptBytes(
     sessionId: String,
     protocolVersion: Int,
@@ -348,10 +376,13 @@ fun codexSecureFingerprint(publicKeyBase64: String): String {
 }
 
 fun base64DecodeOrEmpty(value: String): ByteArray =
+    base64DecodeOrNull(value) ?: ByteArray(0)
+
+fun base64DecodeOrNull(value: String): ByteArray? =
     try {
         Base64.getDecoder().decode(value)
     } catch (_: IllegalArgumentException) {
-        ByteArray(0)
+        null
     }
 
 private fun ByteArrayOutputStream.appendLengthPrefixedUtf8(value: String) {

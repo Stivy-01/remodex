@@ -4,6 +4,8 @@ import com.remodex.mobile.core.persistence.RelaySessionSnapshot
 import com.remodex.mobile.core.persistence.SessionPersistence
 import com.remodex.mobile.core.model.CodexPairingQRPayload
 import com.remodex.mobile.core.security.SecureStore
+import com.remodex.mobile.core.transport.isLocalRelayHost
+import com.remodex.mobile.core.transport.validateRelayUrl
 import com.remodex.mobile.data.CodexRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -72,16 +74,7 @@ suspend fun applyQrPayloadAndConnect(
 }
 
 fun isLoopbackRelayHost(relayUrl: String): Boolean {
-    val trimmed = relayUrl.trim()
-    val forParse =
-        when {
-            trimmed.startsWith("ws://", ignoreCase = true) -> "http://${trimmed.substring(5)}"
-            trimmed.startsWith("wss://", ignoreCase = true) -> "https://${trimmed.substring(6)}"
-            else -> trimmed
-        }
-    val host =
-        forParse.toHttpUrlOrNull()?.host?.lowercase()
-            ?: return false
+    val host = validateRelayUrl(relayUrl)?.httpUrl?.host?.lowercase() ?: return false
     return host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
@@ -101,6 +94,7 @@ fun applyRelayHostOverride(
             else -> trimmed
         }
     val parsed = forParse.toHttpUrlOrNull() ?: return relayUrl
+    if (parsed.isHttps.not() && !isLocalRelayHost(host)) return relayUrl
     val httpish = parsed.newBuilder().host(host).build().toString()
     return when {
         wss -> httpish.replaceFirst("https://", "wss://", ignoreCase = true)

@@ -18,7 +18,7 @@ internal class SecureControlMultiplexer(
 
     private fun channel(kind: String): Channel<String> =
         synchronized(lock) {
-            channels.getOrPut(kind) { Channel(Channel.UNLIMITED) }
+            channels.getOrPut(kind) { Channel(capacity = 16) }
         }
 
     suspend fun receive(

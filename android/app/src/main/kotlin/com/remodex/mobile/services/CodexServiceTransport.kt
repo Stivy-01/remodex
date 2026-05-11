@@ -2,15 +2,17 @@ package com.remodex.mobile.services
 
 import android.util.Log
 import com.remodex.mobile.core.error.CodexServiceError
+import com.remodex.mobile.core.transport.validateRelayUrl
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
 internal const val MAX_WS_PAYLOAD_BYTES = 16 * 1024 * 1024
+internal const val MAX_INBOUND_WS_PAYLOAD_BYTES = 4 * 1024 * 1024
+private const val CLOSE_CODE_MESSAGE_TOO_LARGE = 1009
 
 /**
  * Relay `x-role` for this app.
@@ -87,8 +89,16 @@ internal fun CodexService.newRelayWebSocketListener(
             webSocket: WebSocket,
             text: String,
         ) {
-            Log.d(REMODEX_WS_LOG_TAG, "websocket message bytes=${text.toByteArray(Charsets.UTF_8).size}")
-            svc.wireInbound?.trySend(text)
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            if (bytes.size > MAX_INBOUND_WS_PAYLOAD_BYTES) {
+                webSocket.close(CLOSE_CODE_MESSAGE_TOO_LARGE, "Message too large")
+                return
+            }
+            Log.d(REMODEX_WS_LOG_TAG, "websocket message bytes=${bytes.size}")
+            val result = svc.wireInbound?.trySend(text)
+            if (result?.isFailure == true) {
+                webSocket.close(CLOSE_CODE_MESSAGE_TOO_LARGE, "Inbound buffer full")
+            }
         }
 
         override fun onClosing(
@@ -129,11 +139,5 @@ internal fun CodexService.sendRawText(text: String) {
 /** OkHttp HttpUrl parses only http/https; relay URLs use ws/wss. */
 internal fun parseRelayHttpUrl(serverUrl: String): okhttp3.HttpUrl {
     val t = serverUrl.trim()
-    val forParse =
-        when {
-            t.startsWith("ws://", ignoreCase = true) -> "http://${t.substring(5)}"
-            t.startsWith("wss://", ignoreCase = true) -> "https://${t.substring(6)}"
-            else -> t
-        }
-    return forParse.toHttpUrlOrNull() ?: throw CodexServiceError.InvalidServerURL(t)
+    return validateRelayUrl(t)?.httpUrl ?: throw CodexServiceError.InvalidServerURL(t)
 }
