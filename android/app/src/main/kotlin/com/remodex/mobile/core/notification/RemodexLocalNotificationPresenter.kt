@@ -12,6 +12,7 @@ import com.remodex.mobile.MainActivity
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.PendingApprovalRequest
 import com.remodex.mobile.core.model.PendingStructuredInputRequest
+import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -130,12 +131,14 @@ class RemodexLocalNotificationPresenter(
         turnId: String?,
         source: String,
     ): PendingIntent {
+        val token = issueLaunchToken(appContext, threadId)
         val intent =
             Intent(appContext, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra(EXTRA_THREAD_ID, threadId)
                 putExtra(EXTRA_TURN_ID, turnId.orEmpty())
                 putExtra(EXTRA_SOURCE, source)
+                putExtra(EXTRA_LAUNCH_TOKEN, token)
             }
         val flags =
             PendingIntent.FLAG_UPDATE_CURRENT or
@@ -187,6 +190,7 @@ class RemodexLocalNotificationPresenter(
         const val EXTRA_THREAD_ID = "remodex.extra.THREAD_ID"
         const val EXTRA_TURN_ID = "remodex.extra.TURN_ID"
         const val EXTRA_SOURCE = "remodex.extra.SOURCE"
+        const val EXTRA_LAUNCH_TOKEN = "remodex.extra.LAUNCH_TOKEN"
 
         const val SOURCE_RUN_COMPLETION = "remodex.runCompletion"
         const val SOURCE_PENDING_APPROVAL = "remodex.pendingApproval"
@@ -196,6 +200,26 @@ class RemodexLocalNotificationPresenter(
         private const val NOTIFICATION_ID_RUN_BASE = 10_000
         private const val NOTIFICATION_ID_APPROVAL_BASE = 20_000
         private const val NOTIFICATION_ID_INPUT_BASE = 30_000
+        private const val LAUNCH_TOKEN_PREFS = "remodex_notification_launch_tokens"
+        private const val LAUNCH_TOKEN_BYTES = 32
+        private val launchThreadIdRegex = Regex("^[A-Za-z0-9_-]{1,128}$")
+        private val launchTokenRandom = SecureRandom()
+
+        fun consumeLaunchToken(
+            context: Context,
+            intent: Intent,
+            threadId: String,
+        ): Boolean {
+            val tid = threadId.trim().takeIf { it.isNotEmpty() } ?: return false
+            if (!launchThreadIdRegex.matches(tid)) return false
+            val token = intent.getStringExtra(EXTRA_LAUNCH_TOKEN)?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+            val prefs = context.applicationContext.getSharedPreferences(LAUNCH_TOKEN_PREFS, Context.MODE_PRIVATE)
+            val key = tokenPrefsKey(tid)
+            val expected = prefs.getString(key, null) ?: return false
+            if (expected != token) return false
+            prefs.edit().remove(key).apply()
+            return true
+        }
 
         fun ensureChannelCreated(appContext: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -238,5 +262,22 @@ class RemodexLocalNotificationPresenter(
             val h = key.hashCode()
             return base + (h and 0x0FFF)
         }
+
+        private fun issueLaunchToken(
+            context: Context,
+            threadId: String,
+        ): String {
+            val bytes = ByteArray(LAUNCH_TOKEN_BYTES)
+            launchTokenRandom.nextBytes(bytes)
+            val token = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            context.applicationContext
+                .getSharedPreferences(LAUNCH_TOKEN_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(tokenPrefsKey(threadId), token)
+                .apply()
+            return token
+        }
+
+        private fun tokenPrefsKey(threadId: String): String = "thread:${threadId.trim()}"
     }
 }

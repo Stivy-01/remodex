@@ -3,6 +3,7 @@ package com.remodex.mobile.data
 import com.remodex.mobile.core.model.CODEX_PAIRING_QR_VERSION
 import com.remodex.mobile.core.model.CODEX_SECURE_CLOCK_SKEW_TOLERANCE_SECONDS
 import com.remodex.mobile.core.model.CodexPairingQRPayload
+import com.remodex.mobile.core.transport.validateRelayUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -14,7 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.util.Base64
 
 private val pairingJson =
     Json {
@@ -24,6 +25,9 @@ private val pairingJson =
 
 private const val QR_SCANNER_BRIDGE_UPDATE_COMMAND = "npm install -g remodex@latest"
 private val pairingJsonMediaType = "application/json; charset=utf-8".toMediaType()
+private const val MAX_PAIRING_FIELD_LENGTH = 256
+private const val ED25519_PUBLIC_KEY_BYTES = 32
+private val pairingIdRegex = Regex("^[A-Za-z0-9._:-]{1,$MAX_PAIRING_FIELD_LENGTH}$")
 
 @Serializable
 private data class PairingCodeResolveRequest(
@@ -90,6 +94,12 @@ fun validatePairingQrCode(
                 "QR code is missing the session ID. Re-generate the code from the bridge.",
             )
         }
+        validatePairingFields(
+            relay = payload.relay,
+            sessionId = payload.sessionId,
+            macDeviceId = payload.macDeviceId,
+            macIdentityPublicKey = payload.macIdentityPublicKey,
+        )?.let { return it }
         val skewMillis = (CODEX_SECURE_CLOCK_SKEW_TOLERANCE_SECONDS * 1000).toLong()
         if (nowEpochMillis > payload.expiresAt + skewMillis) {
             return QrPairingValidationResult.ScanError(
@@ -179,6 +189,13 @@ suspend fun resolvePairingCode(
                         "The relay returned incomplete pairing metadata. Generate a new code from the desktop bridge.",
                     )
                 }
+                val resolvedRelay = relayPayloadUrl(relayRoot)
+                validatePairingFields(
+                    relay = resolvedRelay,
+                    sessionId = sessionId,
+                    macDeviceId = macDeviceId,
+                    macIdentityPublicKey = macIdentityPublicKey,
+                )?.let { return@withContext it }
 
                 val skewMillis = (CODEX_SECURE_CLOCK_SKEW_TOLERANCE_SECONDS * 1000).toLong()
                 if (nowEpochMillis > expiresAt + skewMillis) {
@@ -190,7 +207,7 @@ suspend fun resolvePairingCode(
                 QrPairingValidationResult.Success(
                     CodexPairingQRPayload(
                         v = version,
-                        relay = relayPayloadUrl(relayRoot),
+                        relay = resolvedRelay,
                         sessionId = sessionId,
                         macDeviceId = macDeviceId,
                         macIdentityPublicKey = macIdentityPublicKey,
@@ -222,27 +239,47 @@ private fun looksLikeRemodexPairingPayload(raw: String): Boolean {
     return obj.keys.any { it in pairingKeys }
 }
 
+private fun validatePairingFields(
+    relay: String,
+    sessionId: String,
+    macDeviceId: String,
+    macIdentityPublicKey: String,
+): QrPairingValidationResult.ScanError? {
+    val fields = listOf(relay, sessionId, macDeviceId, macIdentityPublicKey)
+    if (fields.any { it.length > MAX_PAIRING_FIELD_LENGTH || containsUnsafePairingChars(it) }) {
+        return QrPairingValidationResult.ScanError(
+            "Pairing metadata has invalid characters or is too large. Generate a new code from the desktop bridge.",
+        )
+    }
+    if (!pairingIdRegex.matches(sessionId) || !pairingIdRegex.matches(macDeviceId)) {
+        return QrPairingValidationResult.ScanError(
+            "Pairing metadata has an invalid identifier. Generate a new code from the desktop bridge.",
+        )
+    }
+    val keyBytes =
+        runCatching { Base64.getDecoder().decode(macIdentityPublicKey) }.getOrNull()
+            ?: return QrPairingValidationResult.ScanError(
+                "Pairing metadata has an invalid Mac identity key. Generate a new code from the desktop bridge.",
+            )
+    if (keyBytes.size != ED25519_PUBLIC_KEY_BYTES) {
+        return QrPairingValidationResult.ScanError(
+            "Pairing metadata has an invalid Mac identity key. Generate a new code from the desktop bridge.",
+        )
+    }
+    if (validateRelayUrl(relay, requireWebSocketScheme = true) == null) {
+        return QrPairingValidationResult.ScanError(
+            "Pairing metadata has an invalid or insecure relay URL. Use a local relay or a secure wss:// relay.",
+        )
+    }
+    return null
+}
+
+private fun containsUnsafePairingChars(value: String): Boolean =
+    value.any { it.isISOControl() || it.isWhitespace() }
+
 private fun relayHttpRootUrl(rawRelayUrl: String): HttpUrl? {
-    val trimmed = rawRelayUrl.trim().trimEnd('/')
-    if (trimmed.isEmpty()) return null
-    val withScheme =
-        if (
-            trimmed.startsWith("ws://", ignoreCase = true) ||
-            trimmed.startsWith("wss://", ignoreCase = true) ||
-            trimmed.startsWith("http://", ignoreCase = true) ||
-            trimmed.startsWith("https://", ignoreCase = true)
-        ) {
-            trimmed
-        } else {
-            "ws://$trimmed"
-        }
-    val httpUrl =
-        when {
-            withScheme.startsWith("ws://", ignoreCase = true) -> "http://${withScheme.substring(5)}"
-            withScheme.startsWith("wss://", ignoreCase = true) -> "https://${withScheme.substring(6)}"
-            else -> withScheme
-        }.toHttpUrlOrNull() ?: return null
-    return httpUrl.newBuilder()
+    val validation = validateRelayUrl(rawRelayUrl) ?: return null
+    return validation.httpUrl.newBuilder()
         .encodedPath("/")
         .query(null)
         .fragment(null)
