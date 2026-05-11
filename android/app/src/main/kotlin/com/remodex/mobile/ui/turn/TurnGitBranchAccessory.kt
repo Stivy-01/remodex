@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -79,6 +78,7 @@ internal fun TurnGitBranchAccessory(
     onCheckoutBranch: (String) -> Unit,
     onCreateBranch: (String) -> Unit,
     onOpenBranchSelector: () -> Unit = {},
+    onBranchPickerOpenChange: (Boolean) -> Unit = {},
     openPickerRequestKey: Int = 0,
     onOpenPickerRequestConsumed: () -> Unit = {},
     compact: Boolean = false,
@@ -94,6 +94,9 @@ internal fun TurnGitBranchAccessory(
     fun closeBranchPicker(cause: BranchPickerCloseCause) {
         sheetOpen = false
         searchQuery = ""
+        createDialogOpen = false
+        newBranchName = ""
+        onBranchPickerOpenChange(false)
         if (shouldConsumeBranchPickerOpenRequest(cause)) {
             onOpenPickerRequestConsumed()
         }
@@ -119,6 +122,7 @@ internal fun TurnGitBranchAccessory(
         if (openPickerRequestKey > 0 && branchPickerEnabled && state is GitBranchPaneState.Loaded) {
             searchQuery = ""
             sheetOpen = true
+            onBranchPickerOpenChange(true)
             onOpenBranchSelector()
         }
     }
@@ -137,44 +141,42 @@ internal fun TurnGitBranchAccessory(
             },
             sheetState = sheetState,
         ) {
-            GitBranchPickerSheetContent(
-                summary = sheetLoadedState.summary,
-                searchQuery = searchQuery,
-                onSearchQueryChange = { searchQuery = it },
-                isSwitchingBranch = isSwitchingBranch || state is GitBranchPaneState.Loading,
-                onRefresh = {
-                    onRefreshBranches()
-                },
-                onSelectBranch = { branch ->
-                    closeBranchPicker(BranchPickerCloseCause.BranchSelected)
-                    onCheckoutBranch(branch)
-                },
-                onOpenCreateBranch = {
-                    newBranchName = ""
-                    createDialogOpen = true
-                },
-            )
+            if (createDialogOpen) {
+                CreateBranchSheetContent(
+                    branchName = newBranchName,
+                    onBranchNameChange = { newBranchName = it },
+                    existingBranches = sheetLoadedState.summary.branches,
+                    currentBranch = sheetLoadedState.summary.currentBranch,
+                    isSwitchingBranch = isSwitchingBranch || state is GitBranchPaneState.Loading,
+                    onCancel = {
+                        createDialogOpen = false
+                        newBranchName = ""
+                    },
+                    onCreate = { branch ->
+                        closeBranchPicker(BranchPickerCloseCause.BranchCreated)
+                        onCreateBranch(branch)
+                    },
+                )
+            } else {
+                GitBranchPickerSheetContent(
+                    summary = sheetLoadedState.summary,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    isSwitchingBranch = isSwitchingBranch || state is GitBranchPaneState.Loading,
+                    onRefresh = {
+                        onRefreshBranches()
+                    },
+                    onSelectBranch = { branch ->
+                        closeBranchPicker(BranchPickerCloseCause.BranchSelected)
+                        onCheckoutBranch(branch)
+                    },
+                    onOpenCreateBranch = {
+                        newBranchName = ""
+                        createDialogOpen = true
+                    },
+                )
+            }
         }
-    }
-
-    if (createDialogOpen && state is GitBranchPaneState.Loaded) {
-        CreateBranchDialog(
-            branchName = newBranchName,
-            onBranchNameChange = { newBranchName = it },
-            existingBranches = state.summary.branches,
-            currentBranch = state.summary.currentBranch,
-            isSwitchingBranch = isSwitchingBranch,
-            onDismiss = {
-                createDialogOpen = false
-                newBranchName = ""
-            },
-            onCreate = { branch ->
-                closeBranchPicker(BranchPickerCloseCause.BranchCreated)
-                createDialogOpen = false
-                newBranchName = ""
-                onCreateBranch(branch)
-            },
-        )
     }
 
     when (state) {
@@ -220,6 +222,7 @@ internal fun TurnGitBranchAccessory(
                     onOpenPicker = {
                         onOpenBranchSelector()
                         sheetOpen = true
+                        onBranchPickerOpenChange(true)
                     },
                     modifier = modifier,
                 )
@@ -231,6 +234,7 @@ internal fun TurnGitBranchAccessory(
                     onOpenPicker = {
                         onOpenBranchSelector()
                         sheetOpen = true
+                        onBranchPickerOpenChange(true)
                     },
                     modifier = modifier,
                 )
@@ -390,13 +394,13 @@ private fun GitBranchPickerSheetContent(
 }
 
 @Composable
-private fun CreateBranchDialog(
+private fun CreateBranchSheetContent(
     branchName: String,
     onBranchNameChange: (String) -> Unit,
     existingBranches: List<String>,
     currentBranch: String?,
     isSwitchingBranch: Boolean,
-    onDismiss: () -> Unit,
+    onCancel: () -> Unit,
     onCreate: (String) -> Unit,
 ) {
     val trimmed = branchName.trim()
@@ -413,45 +417,58 @@ private fun CreateBranchDialog(
 
     val canCreate = trimmed.isNotEmpty() && error == null && !isSwitchingBranch
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.git_branch_create_title)) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = branchName,
-                    onValueChange = onBranchNameChange,
-                    label = { Text(stringResource(R.string.git_branch_create_name_label)) },
-                    singleLine = true,
-                    enabled = !isSwitchingBranch,
-                    isError = error != null,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.git_branch_create_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
 
-                if (error != null) {
-                    Text(
-                        text = error,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
+        OutlinedTextField(
+            value = branchName,
+            onValueChange = onBranchNameChange,
+            label = { Text(stringResource(R.string.git_branch_create_name_label)) },
+            singleLine = true,
+            enabled = !isSwitchingBranch,
+            isError = error != null,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (error != null) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onCancel) {
+                Text(stringResource(R.string.git_branch_create_cancel))
             }
-        },
-        confirmButton = {
+
             TextButton(
                 onClick = { onCreate(trimmed) },
                 enabled = canCreate,
             ) {
                 Text(stringResource(R.string.git_branch_create_action))
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.git_branch_create_cancel))
-            }
-        },
-    )
+        }
+    }
 }
 
 private fun isLikelyValidBranchName(name: String): Boolean {

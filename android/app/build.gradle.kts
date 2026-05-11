@@ -39,6 +39,8 @@ android {
         applicationId = "com.remodex.mobile"
         minSdk = 26
         targetSdk = 36
+sionCode = 7
+
         versionCode = 8
         versionName = "0.1.2"
         buildConfigField("boolean", "BETA_ENABLED", betaEnabled.toString())
