@@ -213,6 +213,7 @@ fun TurnConversationPane(
     var gitBranchReloadNonce by remember(threadId) { mutableIntStateOf(0) }
     var isSwitchingGitBranch by remember(threadId) { mutableStateOf(false) }
     var isHandingOffWorktree by remember(threadId) { mutableStateOf(false) }
+    var isBranchPickerOpen by rememberSaveable(threadId) { mutableStateOf(false) }
     var gitBranchCheckoutError by remember(threadId) { mutableStateOf<String?>(null) }
     var worktreeHandoffError by remember(threadId) { mutableStateOf<String?>(null) }
 
@@ -1865,7 +1866,7 @@ fun TurnConversationPane(
                 }
             },
             composerEnvironment = {
-                if (!isImeVisible) {
+                if (!isImeVisible || isBranchPickerOpen) {
                     TurnComposerSecondaryBar(
                         threadId = threadId,
                         repository = repository,
@@ -1904,6 +1905,9 @@ fun TurnConversationPane(
                                     screen = "branch_selector",
                                 )
                             }
+                        },
+                        onBranchPickerOpenChange = { isOpen ->
+                            isBranchPickerOpen = isOpen
                         },
                     )
                 }
