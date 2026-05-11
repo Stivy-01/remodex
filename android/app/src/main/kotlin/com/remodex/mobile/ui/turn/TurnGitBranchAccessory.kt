@@ -78,6 +78,8 @@ internal fun TurnGitBranchAccessory(
     onCheckoutBranch: (String) -> Unit,
     onCreateBranch: (String) -> Unit,
     onOpenBranchSelector: () -> Unit = {},
+    openPickerRequestKey: Int = 0,
+    onOpenPickerRequestConsumed: () -> Unit = {},
     compact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -89,6 +91,15 @@ internal fun TurnGitBranchAccessory(
     LaunchedEffect(branchPickerEnabled, state) {
         if (!branchPickerEnabled || state !is GitBranchPaneState.Loaded) {
             sheetOpen = false
+        }
+    }
+
+    LaunchedEffect(openPickerRequestKey) {
+        if (openPickerRequestKey > 0 && branchPickerEnabled && state is GitBranchPaneState.Loaded) {
+            searchQuery = ""
+            sheetOpen = true
+            onOpenBranchSelector()
+            onOpenPickerRequestConsumed()
         }
     }
 

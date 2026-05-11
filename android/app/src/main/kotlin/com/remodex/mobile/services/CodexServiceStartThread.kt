@@ -61,20 +61,28 @@ internal suspend fun CodexService.startThreadInternal(
         }.getOrElse {
             throw CodexServiceError.InvalidResponse("thread/start thread decode failed")
         }
-    val patched = applyPreferredProjectFallback(decoded, normalizedCwd)
+    val patched = applyRequestedProjectPathForNewThread(decoded, normalizedCwd)
+    normalizedCwd?.let { cwd ->
+        beginAuthoritativeProjectPathTransition(patched.id, cwd)
+        rememberAssociatedManagedWorktreePathIfWorktree(cwd, patched.id)
+    }
     publishThreads(upsertThreadRow(_threads.value, patched))
     _activeThreadId.value = patched.id
     sessionPersistence.saveLastActiveThreadId(patched.id)
+    if (normalizedCwd != null) {
+        requestBranchPickerForThread(patched.id)
+    }
     resumedThreadIds.add(patched.id)
     runCatching { syncThreadHistoryInternal(patched.id, force = true) }
     return patched
 }
 
-private fun applyPreferredProjectFallback(
+internal fun applyRequestedProjectPathForNewThread(
     thread: CodexThread,
-    preferred: String?,
+    requested: String?,
 ): CodexThread {
-    if (thread.normalizedProjectPath != null || preferred == null) return thread
+    val preferred = CodexThread.normalizeProjectPath(requested) ?: return thread
+    if (thread.normalizedProjectPath == preferred) return thread
     return thread.copy(cwd = preferred)
 }
 

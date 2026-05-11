@@ -141,6 +141,9 @@ class CodexService(
     override val protectedRunningFallbackThreadIds: StateFlow<Set<String>> =
         _protectedRunningFallbackThreadIds.asStateFlow()
 
+    internal val _pendingBranchPickerThreadId = MutableStateFlow<String?>(null)
+    override val pendingBranchPickerThreadId: StateFlow<String?> = _pendingBranchPickerThreadId.asStateFlow()
+
     internal val _availableModels = MutableStateFlow<List<CodexModelOption>>(emptyList())
     override val availableModels: StateFlow<List<CodexModelOption>> = _availableModels.asStateFlow()
 
@@ -492,6 +495,18 @@ class CodexService(
             cwd = cwd,
             serviceTier = serviceTier,
         )
+
+    override fun requestBranchPickerForThread(threadId: String) {
+        val tid = CodexThread.normalizeIdentifier(threadId) ?: return
+        _pendingBranchPickerThreadId.value = tid
+    }
+
+    override fun consumeBranchPickerRequest(threadId: String) {
+        val tid = CodexThread.normalizeIdentifier(threadId) ?: return
+        if (_pendingBranchPickerThreadId.value == tid) {
+            _pendingBranchPickerThreadId.value = null
+        }
+    }
 
     override suspend fun forkThread(
         sourceThreadId: String,

@@ -61,6 +61,8 @@ internal fun TurnComposerSecondaryBar(
     onCheckoutGitBranch: (String) -> Unit,
     onCreateGitBranch: (String) -> Unit,
     onOpenBranchSelector: () -> Unit = {},
+    openPickerRequestKey: Int = 0,
+    onOpenPickerRequestConsumed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -242,6 +244,8 @@ internal fun TurnComposerSecondaryBar(
                 onCheckoutBranch = onCheckoutGitBranch,
                 onCreateBranch = onCreateGitBranch,
                 onOpenBranchSelector = onOpenBranchSelector,
+                openPickerRequestKey = openPickerRequestKey,
+                onOpenPickerRequestConsumed = onOpenPickerRequestConsumed,
                 compact = true,
                 modifier = Modifier.widthIn(max = 190.dp),
             )
