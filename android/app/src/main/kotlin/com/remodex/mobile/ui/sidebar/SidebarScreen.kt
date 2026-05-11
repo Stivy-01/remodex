@@ -83,6 +83,8 @@ fun SidebarScreen(
     var newChatBusy by remember { mutableStateOf(false) }
     var newChatError by remember { mutableStateOf<String?>(null) }
     var showProjectPicker by remember { mutableStateOf(false) }
+    var projectPickerInitialPath by remember { mutableStateOf<String?>(null) }
+    var projectPickerFoldersCollapsed by remember { mutableStateOf(false) }
     var worktreeChatBusy by remember { mutableStateOf(false) }
     var worktreeChatError by remember { mutableStateOf<String?>(null) }
     var worktreeGitSyncAlert by remember { mutableStateOf<TurnGitSyncAlert?>(null) }
@@ -170,6 +172,7 @@ fun SidebarScreen(
                             resolvedBranch
                         }
                 WorktreeFlowCoordinator(repository).startNewManagedWorktreeChat(base, branch)
+                onThreadSelected()
             } catch (e: Exception) {
                 worktreeChatError = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
             } finally {
@@ -194,7 +197,12 @@ fun SidebarScreen(
             label = stringResource(R.string.sidebar_new_chat),
             enabled = ready && !newChatBusy && !worktreeChatBusy,
             busy = newChatBusy,
-            onClick = { showProjectPicker = true },
+            onClick = {
+                newChatError = null
+                projectPickerInitialPath = WorktreeNewChatDefaults.baseProjectPath(activeId, threads)
+                projectPickerFoldersCollapsed = false
+                showProjectPicker = true
+            },
         )
         SidebarCompactActionRow(
             label = stringResource(R.string.sidebar_new_managed_worktree_chat),
@@ -277,15 +285,9 @@ fun SidebarScreen(
                             if (group.kind == SidebarThreadGroupKind.Project && group.projectPath != null) {
                                 {
                                     newChatError = null
-                                    newChatBusy = true
-                                    val cwd = group.projectPath
-                                    scope.launch {
-                                        runCatching { repository.startThread(cwd = cwd) }
-                                            .onFailure { e ->
-                                                newChatError = e.message ?: e.javaClass.simpleName
-                                            }
-                                        newChatBusy = false
-                                    }
+                                    projectPickerInitialPath = group.projectPath
+                                    projectPickerFoldersCollapsed = true
+                                    showProjectPicker = true
                                 }
                             } else {
                                 null
@@ -584,9 +586,16 @@ fun SidebarScreen(
         SidebarProjectPickerSheet(
             repository = repository,
             visible = showProjectPicker,
-            initialPath = WorktreeNewChatDefaults.baseProjectPath(activeId, threads),
-            onDismiss = { showProjectPicker = false },
+            initialPath = projectPickerInitialPath ?: WorktreeNewChatDefaults.baseProjectPath(activeId, threads),
+            onDismiss = {
+                showProjectPicker = false
+                projectPickerInitialPath = null
+                projectPickerFoldersCollapsed = false
+            },
             onStartBusyChange = { newChatBusy = it },
+            onStartThread = { cwd -> startSidebarNewChat(repository, cwd) },
+            initialFoldersCollapsed = projectPickerFoldersCollapsed,
+            onThreadStarted = onThreadSelected,
         )
         worktreeGitSyncAlert?.let { alert ->
             fun dismissWorktreeAlert() {

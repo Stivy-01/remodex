@@ -1,13 +1,60 @@
 package com.remodex.mobile.data
 
+import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexMessageDeliveryState
+import com.remodex.mobile.core.model.CodexImageAttachment
 import com.remodex.mobile.core.model.CodexMessageKind
 import com.remodex.mobile.core.model.CodexMessageRole
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
 
 class MessageTimelineStoreTest {
+    @Test
+    fun init_dedupesPersistedPhotoUserEchoRows() {
+        val payload = "data:image/jpeg;base64,abc"
+        val firstAttachment =
+            CodexImageAttachment(
+                id = "persisted-photo-1",
+                thumbnailBase64JPEG = "thumb-1",
+                payloadDataURL = payload,
+                sourceURL = "content://picked/photo",
+            )
+        val secondAttachment =
+            CodexImageAttachment(
+                id = "persisted-photo-2",
+                thumbnailBase64JPEG = "thumb-2",
+                payloadDataURL = payload,
+                sourceURL = payload,
+            )
+        val store =
+            MessageTimelineStore(
+                initialMessages =
+                    mapOf(
+                        "thread-1" to
+                            listOf(
+                                userMessage(
+                                    id = "persisted-user-1",
+                                    itemId = "user-input",
+                                    attachments = listOf(firstAttachment),
+                                ),
+                                userMessage(
+                                    id = "persisted-user-2",
+                                    itemId = "user-message",
+                                    attachments = listOf(secondAttachment),
+                                ),
+                            ),
+                    ),
+            )
+
+        val messages = store.messagesByThread.value["thread-1"].orEmpty()
+        assertEquals(1, messages.size)
+        assertEquals("persisted-user-1", messages.single().id)
+        assertEquals("user-message", messages.single().itemId)
+        assertEquals(listOf(firstAttachment), messages.single().attachments)
+    }
+
     @Test
     fun completeAssistantMessage_mergesStreamingRowWhenCompletionAddsItemId() =
         runTest {
@@ -54,6 +101,36 @@ class MessageTimelineStoreTest {
             val messages = store.messagesByThread.value["thread-1"].orEmpty()
             assertEquals("hello world", messages.single().text)
             assertEquals(true, messages.single().isStreaming)
+        }
+
+    @Test
+    fun appendMirroredUser_mergesPhotoEchoWithDifferentAttachmentMetadata() =
+        runTest {
+            val store = MessageTimelineStore()
+            val payload = "data:image/jpeg;base64,abc"
+            val localAttachment =
+                CodexImageAttachment(
+                    id = "local-photo",
+                    thumbnailBase64JPEG = "local-thumb",
+                    payloadDataURL = payload,
+                    sourceURL = "content://picked/photo",
+                )
+            val mirroredAttachment =
+                CodexImageAttachment(
+                    id = "mirrored-photo",
+                    thumbnailBase64JPEG = "mirrored-thumb",
+                    payloadDataURL = payload,
+                    sourceURL = payload,
+                )
+
+            store.appendPendingUserMessage("thread-1", "look", listOf(localAttachment))
+            store.appendMirroredUser("thread-1", "turn-1", "look", listOf(mirroredAttachment))
+
+            val messages = store.messagesByThread.value["thread-1"].orEmpty()
+            assertEquals(1, messages.size)
+            assertEquals(CodexMessageDeliveryState.confirmed, messages.single().deliveryState)
+            assertEquals("turn-1", messages.single().turnId)
+            assertEquals(listOf(localAttachment), messages.single().attachments)
         }
 
     @Test
@@ -299,5 +376,23 @@ class MessageTimelineStoreTest {
 
             assertEquals(0, store.messagesByThread.value["t-app"].orEmpty().size)
         }
+
+    private fun userMessage(
+        id: String,
+        itemId: String,
+        attachments: List<CodexImageAttachment>,
+    ): CodexMessage =
+        CodexMessage(
+            id = id,
+            threadId = "thread-1",
+            role = CodexMessageRole.user,
+            kind = CodexMessageKind.chat,
+            text = "look",
+            createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+            turnId = "turn-phone",
+            itemId = itemId,
+            deliveryState = CodexMessageDeliveryState.confirmed,
+            attachments = attachments,
+        )
 }
 

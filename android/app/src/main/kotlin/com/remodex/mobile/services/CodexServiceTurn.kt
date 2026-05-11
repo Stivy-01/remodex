@@ -48,12 +48,16 @@ internal suspend fun CodexService.startTurnInternal(
 
     suspend fun resumeTargetOrThrow() {
         val row = _threads.value.find { it.id == targetThreadId }
-        ensureThreadResumedInternal(
-            threadId = targetThreadId,
-            force = false,
-            preferredProjectPath = row?.gitWorkingDirectory,
-            modelIdentifierOverride = row?.model,
-        )
+        try {
+            ensureThreadResumedInternal(
+                threadId = targetThreadId,
+                force = false,
+                preferredProjectPath = row?.gitWorkingDirectory,
+                modelIdentifierOverride = row?.model,
+            )
+        } catch (e: Exception) {
+            if (!shouldAllowProjectRebindWithoutResume(e)) throw e
+        }
     }
 
     suspend fun continuationAfterExplicitMissing(archivedId: String) {

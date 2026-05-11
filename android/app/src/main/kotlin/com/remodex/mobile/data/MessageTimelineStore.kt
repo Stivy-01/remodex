@@ -45,9 +45,13 @@ internal class MessageTimelineStore(
     val messagesByThread: StateFlow<Map<String, List<CodexMessage>>> = _messagesByThread.asStateFlow()
 
     init {
-        CodexMessageOrderCounter.seedFrom(initialMessages)
-        rebuildSubagentIdentityDirectory(initialMessages.values.flatten())
-        _messagesByThread.value = initialMessages.mapValues { (_, messages) ->
+        val normalizedInitialMessages =
+            initialMessages.mapValues { (_, messages) ->
+                HistoryMessageMerge.normalize(messages)
+            }
+        CodexMessageOrderCounter.seedFrom(normalizedInitialMessages)
+        rebuildSubagentIdentityDirectory(normalizedInitialMessages.values.flatten())
+        _messagesByThread.value = normalizedInitialMessages.mapValues { (_, messages) ->
             messages.map(::resolveSubagentMessageIdentities)
         }
     }
@@ -901,7 +905,7 @@ internal class MessageTimelineStore(
                     existing.copy(
                         deliveryState = CodexMessageDeliveryState.confirmed,
                         turnId = turnId ?: existing.turnId,
-                        attachments = mergeUserAttachments(existing.attachments, attachments),
+                        attachments = UserChatAttachmentMatcher.merge(existing.attachments, attachments),
                     )
                 if (next != existing) {
                     list[existingIdx] = next
@@ -1541,17 +1545,7 @@ internal class MessageTimelineStore(
         existing: List<CodexImageAttachment>,
         incoming: List<CodexImageAttachment>,
     ): Boolean =
-        existing == incoming || existing.isEmpty() || incoming.isEmpty()
-
-    private fun mergeUserAttachments(
-        existing: List<CodexImageAttachment>,
-        incoming: List<CodexImageAttachment>,
-    ): List<CodexImageAttachment> =
-        when {
-            existing.isNotEmpty() -> existing
-            incoming.isNotEmpty() -> incoming
-            else -> emptyList()
-        }
+        UserChatAttachmentMatcher.compatible(existing, incoming)
 
     private fun reassignOrderIndexesInCurrentOrder(list: MutableList<CodexMessage>) {
         for (index in list.indices) {

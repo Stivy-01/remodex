@@ -10,6 +10,7 @@ use tauri::Manager;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::Emitter;
+use tauri_plugin_updater::UpdaterExt;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -45,6 +46,14 @@ pub struct DebugInfo {
     pub config_path: String,
     pub config_exists: bool,
     pub node_version: String,
+}
+
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub current_version: String,
+    pub date: Option<String>,
+    pub body: Option<String>,
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
@@ -1305,6 +1314,53 @@ fn debug_paths() -> Result<DebugInfo, String> {
     })
 }
 
+#[tauri::command]
+async fn check_for_update(app_handle: tauri::AppHandle) -> Result<Option<UpdateInfo>, String> {
+    let update = app_handle
+        .updater()
+        .map_err(|e| format!("updater unavailable: {e}"))?
+        .check()
+        .await
+        .map_err(|e| format!("update check failed: {e}"))?;
+
+    Ok(update.map(|update| UpdateInfo {
+        version: update.version,
+        current_version: update.current_version,
+        date: update.date.map(|d| d.to_string()),
+        body: update.body,
+    }))
+}
+
+#[tauri::command]
+async fn install_update(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let update = app_handle
+        .updater()
+        .map_err(|e| format!("updater unavailable: {e}"))?
+        .check()
+        .await
+        .map_err(|e| format!("update check failed: {e}"))?;
+
+    let Some(update) = update else {
+        add_log(&app_handle, "app", "info", "No update available");
+        return Ok(());
+    };
+
+    add_log(
+        &app_handle,
+        "app",
+        "info",
+        &format!("Installing Remodex Host update {}", update.version),
+    );
+
+    update
+        .download_and_install(|_chunk_length, _content_length| {}, || {})
+        .await
+        .map_err(|e| format!("update install failed: {e}"))?;
+
+    add_log(&app_handle, "app", "info", "Update installed; restarting");
+    app_handle.restart();
+}
+
 // ─── Main ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1326,6 +1382,7 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(move |app| {
             if cfg!(debug_assertions) {
@@ -1525,6 +1582,8 @@ pub fn run() {
             notify,
             set_relay_mode,
             set_remote_relay_url,
+            check_for_update,
+            install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

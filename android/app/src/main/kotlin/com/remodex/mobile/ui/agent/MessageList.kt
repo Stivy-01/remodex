@@ -118,7 +118,13 @@ fun MessageList(
     onUndoAssistantChanges: ((AIChangeSet) -> Unit)? = null,
 ) {
     val lastAssistantIndex = messages.indexOfLast { it.role == CodexMessageRole.assistant }
-    val showTrailingActions = lastAssistantIndex >= 0 && onForkThread != null
+    val lastAssistantMessage = messages.getOrNull(lastAssistantIndex)
+    val showTrailingActions =
+        shouldShowAssistantTrailingActions(
+            lastAssistantMessage = lastAssistantMessage,
+            isAssistantTurnActive = isAssistantTurnActive,
+            onForkThreadAvailable = onForkThread != null,
+        )
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     // Slow, precise drag remains native. Fast user drag is progressively damped
@@ -407,6 +413,16 @@ private fun TimelineListItemContent(
 
 private fun CodexMessage.timelineContentType(): String =
     "${role.name}_${kind.name}"
+
+internal fun shouldShowAssistantTrailingActions(
+    lastAssistantMessage: CodexMessage?,
+    isAssistantTurnActive: Boolean,
+    onForkThreadAvailable: Boolean,
+): Boolean =
+    onForkThreadAvailable &&
+        lastAssistantMessage != null &&
+        !isAssistantTurnActive &&
+        !lastAssistantMessage.isStreaming
 
 private fun TimelineListItem.MessageChunk.toRenderMessage(): CodexMessage =
     message.copy(

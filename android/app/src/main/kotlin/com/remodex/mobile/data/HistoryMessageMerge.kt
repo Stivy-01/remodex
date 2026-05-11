@@ -10,6 +10,9 @@ import com.remodex.mobile.core.model.CodexMessageRole
  * Simplified vs iOS [CodexService.mergeHistoryMessages] but same keying idea.
  */
 internal object HistoryMessageMerge {
+    fun normalize(messages: List<CodexMessage>): List<CodexMessage> =
+        messages.dedupeCompatibleUserChats()
+
     fun merge(
         existing: List<CodexMessage>,
         incoming: List<CodexMessage>,
@@ -18,6 +21,7 @@ internal object HistoryMessageMerge {
         if (existing.isEmpty()) {
             return incoming
                 .sortedBy { it.createdAt }
+                .dedupeCompatibleUserChats()
         }
         val merged = existing.toMutableList()
         val keys = merged.map { historyKey(it) }.toMutableSet()
@@ -129,8 +133,9 @@ internal object HistoryMessageMerge {
                 additions.add(m)
             }
         }
-        if (additions.isEmpty() && merged == existing) return existing
-        return (merged + additions).dedupeCompatibleUserChats()
+        val deduped = (merged + additions).dedupeCompatibleUserChats()
+        if (additions.isEmpty() && deduped == existing) return existing
+        return deduped
     }
 
     private fun historyKey(m: CodexMessage): String {
@@ -159,10 +164,13 @@ internal object HistoryMessageMerge {
     ): Boolean {
         val existingItem = existing.itemId?.trim()?.takeIf { it.isNotEmpty() }
         val incomingItem = incoming.itemId?.trim()?.takeIf { it.isNotEmpty() }
-        if (existingItem != null && incomingItem != null) return existingItem == incomingItem
-
         val existingTurn = existing.turnId?.trim()?.takeIf { it.isNotEmpty() }
         val incomingTurn = incoming.turnId?.trim()?.takeIf { it.isNotEmpty() }
+        if (existingItem != null && incomingItem != null && existingItem != incomingItem) {
+            return existingTurn != null && existingTurn == incomingTurn
+        }
+        if (existingItem != null && incomingItem != null) return true
+
         if (existingTurn != null && incomingTurn != null) return existingTurn == incomingTurn
 
         val hasPendingLocal =
@@ -182,11 +190,7 @@ internal object HistoryMessageMerge {
             isStreaming = false,
             deliveryState = CodexMessageDeliveryState.confirmed,
             attachments =
-                when {
-                    existing.attachments.isNotEmpty() -> existing.attachments
-                    incoming.attachments.isNotEmpty() -> incoming.attachments
-                    else -> emptyList()
-                },
+                UserChatAttachmentMatcher.merge(existing.attachments, incoming.attachments),
         )
 
     private fun mergeSystemItemDuplicate(
@@ -276,9 +280,7 @@ internal object HistoryMessageMerge {
         existing: CodexMessage,
         incoming: CodexMessage,
     ): Boolean =
-        existing.attachments == incoming.attachments ||
-            existing.attachments.isEmpty() ||
-            incoming.attachments.isEmpty()
+        UserChatAttachmentMatcher.compatible(existing.attachments, incoming.attachments)
 
     private fun normalizedMessageText(text: String): String =
         text.trim().replace("\\s+".toRegex(), " ")

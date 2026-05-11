@@ -2,6 +2,7 @@ package com.remodex.mobile.data
 
 import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexMessageDeliveryState
+import com.remodex.mobile.core.model.CodexImageAttachment
 import com.remodex.mobile.core.model.CodexMessageKind
 import com.remodex.mobile.core.model.CodexMessageRole
 import java.time.Instant
@@ -102,6 +103,112 @@ class HistoryMessageMergeTest {
         assertEquals(listOf("phone-local", "desktop-user"), merged.map { it.id })
         assertEquals(CodexMessageDeliveryState.confirmed, merged.first().deliveryState)
         assertEquals("turn-phone", merged.first().turnId)
+    }
+
+    @Test
+    fun merge_reconcilesPhotoUserEchoWithDifferentAttachmentMetadata() {
+        val payload = "data:image/jpeg;base64,abc"
+        val localAttachment =
+            CodexImageAttachment(
+                id = "local-photo",
+                thumbnailBase64JPEG = "local-thumb",
+                payloadDataURL = payload,
+                sourceURL = "content://picked/photo",
+            )
+        val historyAttachment =
+            CodexImageAttachment(
+                id = "history-photo",
+                thumbnailBase64JPEG = "history-thumb",
+                payloadDataURL = payload,
+                sourceURL = payload,
+            )
+        val existing =
+            listOf(
+                message(
+                    id = "phone-local",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "look",
+                    turnId = null,
+                    itemId = null,
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:10Z"),
+                    deliveryState = CodexMessageDeliveryState.pending,
+                    attachments = listOf(localAttachment),
+                ),
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "phone-history",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "look",
+                    turnId = "turn-phone",
+                    itemId = "user-phone",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                    attachments = listOf(historyAttachment),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing, incoming)
+
+        assertEquals(1, merged.size)
+        assertEquals("phone-local", merged.single().id)
+        assertEquals("turn-phone", merged.single().turnId)
+        assertEquals(listOf(localAttachment), merged.single().attachments)
+    }
+
+    @Test
+    fun merge_dedupesReplayedPhotoUserRowsWhenExistingTimelineIsEmpty() {
+        val payload = "data:image/jpeg;base64,abc"
+        val firstAttachment =
+            CodexImageAttachment(
+                id = "history-photo-1",
+                thumbnailBase64JPEG = "thumb-1",
+                payloadDataURL = payload,
+                sourceURL = "content://picked/photo",
+            )
+        val secondAttachment =
+            CodexImageAttachment(
+                id = "history-photo-2",
+                thumbnailBase64JPEG = "thumb-2",
+                payloadDataURL = payload,
+                sourceURL = payload,
+            )
+        val incoming =
+            listOf(
+                message(
+                    id = "history-user-1",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "look",
+                    turnId = "turn-phone",
+                    itemId = "user-input",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:01Z"),
+                    attachments = listOf(firstAttachment),
+                ),
+                message(
+                    id = "history-user-2",
+                    role = CodexMessageRole.user,
+                    kind = CodexMessageKind.chat,
+                    text = "look",
+                    turnId = "turn-phone",
+                    itemId = "user-message",
+                    isStreaming = false,
+                    createdAt = Instant.parse("2024-01-01T00:00:02Z"),
+                    attachments = listOf(secondAttachment),
+                ),
+            )
+
+        val merged = HistoryMessageMerge.merge(existing = emptyList(), incoming = incoming)
+
+        assertEquals(1, merged.size)
+        assertEquals("history-user-1", merged.single().id)
+        assertEquals("user-message", merged.single().itemId)
+        assertEquals(listOf(firstAttachment), merged.single().attachments)
     }
 
     @Test
@@ -399,6 +506,7 @@ class HistoryMessageMergeTest {
         isStreaming: Boolean,
         createdAt: Instant,
         deliveryState: CodexMessageDeliveryState = CodexMessageDeliveryState.confirmed,
+        attachments: List<CodexImageAttachment> = emptyList(),
     ): CodexMessage =
         CodexMessage(
             id = id,
@@ -411,5 +519,6 @@ class HistoryMessageMergeTest {
             itemId = itemId,
             isStreaming = isStreaming,
             deliveryState = deliveryState,
+            attachments = attachments,
         )
 }
