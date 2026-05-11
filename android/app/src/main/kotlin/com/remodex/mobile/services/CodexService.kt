@@ -73,6 +73,7 @@ private const val INITIAL_TIMELINE_TAIL_LIMIT = 48
 class CodexService(
     context: Context,
     internal val httpClient: OkHttpClient,
+    internal val httpCallClient: OkHttpClient = httpClient,
     internal val secureStore: SecureStore,
     internal val sessionPersistence: SessionPersistence,
     messagePersistence: CodexMessagePersistence,
@@ -99,6 +100,7 @@ class CodexService(
 
     @Volatile
     internal var secureSession: CodexSecureSession? = null
+    internal val secureSessionLock = Any()
 
     @Volatile
     internal var sessionReady = false

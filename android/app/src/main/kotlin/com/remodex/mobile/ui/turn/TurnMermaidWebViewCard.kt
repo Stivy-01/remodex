@@ -169,6 +169,8 @@ internal class TurnMermaidWebViewState {
             domStorageEnabled = false
             allowFileAccess = false
             allowContentAccess = false
+            allowFileAccessFromFileURLs = false
+            allowUniversalAccessFromFileURLs = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             builtInZoomControls = interactionEnabled
             displayZoomControls = false

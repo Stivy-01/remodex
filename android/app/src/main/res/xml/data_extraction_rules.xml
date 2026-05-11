@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="remodex_secure_store.xml" />
+        <exclude domain="sharedpref" path="remodex_session_state.xml" />
+        <exclude domain="sharedpref" path="remodex_ui.xml" />
+        <exclude domain="sharedpref" path="remodex_beta.xml" />
+        <exclude domain="sharedpref" path="remodex_onboarding.xml" />
+        <exclude domain="file" path="com.remodex.mobile/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="remodex_secure_store.xml" />
+        <exclude domain="sharedpref" path="remodex_session_state.xml" />
+        <exclude domain="sharedpref" path="remodex_ui.xml" />
+        <exclude domain="sharedpref" path="remodex_beta.xml" />
+        <exclude domain="sharedpref" path="remodex_onboarding.xml" />
+        <exclude domain="file" path="com.remodex.mobile/" />
+    </device-transfer>
+</data-extraction-rules>
