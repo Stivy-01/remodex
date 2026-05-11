@@ -9,7 +9,8 @@
     "copy-bundled": "node copy-bundled.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:build:windows": "tauri build --bundles nsis,msi"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.4",
