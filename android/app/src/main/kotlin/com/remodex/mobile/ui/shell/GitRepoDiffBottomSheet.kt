@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,6 +66,7 @@ import com.remodex.mobile.core.model.GitRepoSyncResult
 import com.remodex.mobile.data.RepoDiffLastTurnFileRow
 import com.remodex.mobile.ui.agent.truncatePathMiddle
 import com.remodex.mobile.ui.theme.RemodexGitAddition
+import com.remodex.mobile.ui.theme.RemodexModalBottomSheet
 import com.remodex.mobile.ui.turn.RepoMarkdownFileLink
 import kotlinx.coroutines.delay
 
@@ -109,7 +109,7 @@ fun GitRepoDiffBottomSheet(
     LaunchedEffect(sheetState) {
         sheetState.expand()
     }
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
@@ -186,8 +186,20 @@ fun GitRepoDiffBottomSheet(
             onFocusConsumedUpdated.value()
         }
 
+        val editSessionKey =
+            remember(scope, rows) {
+                buildString {
+                    append(scope.name)
+                    rows.forEach { row ->
+                        append('|')
+                        append(row.stableKey)
+                        append(':')
+                        append(row.chunk.hashCode())
+                    }
+                }
+            }
         val edits = remember { mutableStateMapOf<String, TextFieldValue>() }
-        LaunchedEffect(scope) {
+        LaunchedEffect(editSessionKey) {
             edits.clear()
         }
 

@@ -23,7 +23,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +48,7 @@ import com.remodex.mobile.R
 import com.remodex.mobile.data.GitBranchDisplaySummary
 import com.remodex.mobile.data.GitBranchPickerRules
 import com.remodex.mobile.ui.theme.AgentLightColors
+import com.remodex.mobile.ui.theme.RemodexModalBottomSheet
 import com.remodex.mobile.ui.theme.isAgentLightChrome
 
 /** Read-only Git branch / worktree snapshot for the active thread (J.7c), with optional picker. */
@@ -135,7 +135,7 @@ internal fun TurnGitBranchAccessory(
     if (sheetOpen && sheetLoadedState != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-        ModalBottomSheet(
+        RemodexModalBottomSheet(
             onDismissRequest = {
                 closeBranchPicker(BranchPickerCloseCause.UserDismissed)
             },

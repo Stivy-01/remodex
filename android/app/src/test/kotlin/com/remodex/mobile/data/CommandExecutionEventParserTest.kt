@@ -104,6 +104,25 @@ class CommandExecutionEventParserTest {
         assertEquals(5000, state.durationMs)
     }
 
+    @Test
+    fun parse_usesEnvelopeItemIdWhenParamsIdIsMissing() {
+        val state =
+            CommandExecutionEventParser.parse(
+                params =
+                    mapOf(
+                        "delta" to JSONValue.Str("hello"),
+                    ),
+                eventObject =
+                    mapOf(
+                        "id" to JSONValue.Str("envelope-item-1"),
+                    ),
+                method = "item/commandExecution/outputDelta",
+            )
+
+        assertEquals("envelope-item-1", state.itemId)
+        assertEquals("hello", state.outputChunk)
+    }
+
     private fun phase(
         status: String?,
         method: String = "item/commandExecution/outputDelta",

@@ -1,6 +1,7 @@
 package com.remodex.mobile.ui.turn
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,6 +33,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
 import com.remodex.mobile.R
+import com.remodex.mobile.ui.theme.RemodexDropdownMenu
+import com.remodex.mobile.ui.theme.RemodexPopupChrome
 import com.remodex.mobile.ui.theme.isAgentLightChrome
 
 /** Compact footnote / unified chip icon size. */
@@ -122,9 +124,10 @@ internal fun UnifiedComposerModelRuntimeChip(
                 modifier
                     .wrapContentWidth()
                     .widthIn(max = 136.dp)
+                    .border(RemodexPopupChrome.borderStroke(), RoundedCornerShape(999.dp))
                     .clickable(enabled = canOpenMenu) { expanded = true },
             shape = RoundedCornerShape(999.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (lightChrome) 0.26f else 0.42f),
+            color = RemodexPopupChrome.surfaceColor().copy(alpha = if (lightChrome) 0.92f else 0.72f),
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Row(
@@ -161,7 +164,7 @@ internal fun UnifiedComposerModelRuntimeChip(
             }
         }
 
-        DropdownMenu(
+        RemodexDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {

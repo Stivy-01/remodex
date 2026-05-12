@@ -22,7 +22,6 @@ import com.remodex.mobile.core.model.RPCMessage
 import com.remodex.mobile.core.model.ThreadHistoryPaginationState
 import com.remodex.mobile.core.model.UsageStatusRefreshPolicy
 import com.remodex.mobile.core.transport.ConnectionState
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -44,27 +43,21 @@ interface CodexRepository {
 
     /** Cursor-backed history state for large threads. */
     val threadHistoryPaginationByThread: StateFlow<Map<String, ThreadHistoryPaginationState>>
-        get() = MutableStateFlow(emptyMap())
 
     val loadingOlderHistoryThreadIds: StateFlow<Set<String>>
-        get() = MutableStateFlow(emptySet())
 
     val olderHistoryErrorByThread: StateFlow<Map<String, String>>
-        get() = MutableStateFlow(emptyMap())
 
     /** Live structured command metadata keyed by command item id; timeline text remains authoritative history. */
     val commandExecutionDetailsByItemId: StateFlow<Map<String, CommandExecutionDetails>>
-        get() = MutableStateFlow(emptyMap())
 
     /** Local queued draft count per thread (J22 foundation). */
     val turnDraftQueueDepthByThread: StateFlow<Map<String, Int>>
-        get() = MutableStateFlow(emptyMap())
+
     val turnDraftQueuePreviewByThread: StateFlow<Map<String, List<QueuedTurnDraftPreview>>>
-        get() = MutableStateFlow(emptyMap())
 
     /** One-shot UI request to open the branch picker for a newly-created repo-bound thread. */
     val pendingBranchPickerThreadId: StateFlow<String?>
-        get() = MutableStateFlow(null)
 
     /** Thread id → turn id in esecuzione (per UI Stop). */
     val runningTurnIdByThread: StateFlow<Map<String, String>>

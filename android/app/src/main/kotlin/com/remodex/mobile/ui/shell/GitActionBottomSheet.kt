@@ -19,7 +19,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -41,6 +40,7 @@ import com.remodex.mobile.core.model.GitDiffTotals
 import com.remodex.mobile.core.model.GitRepoSyncResult
 import com.remodex.mobile.ui.agent.GitNodeConnectorIcon
 import com.remodex.mobile.ui.theme.RemodexGitAddition
+import com.remodex.mobile.ui.theme.RemodexModalBottomSheet
 
 enum class GitActionSheetMode {
     commit,
@@ -83,7 +83,8 @@ fun GitActionBottomSheet(
     var commitMessage by remember(mode) { mutableStateOf("") }
     var pullRequestTitle by remember(mode) { mutableStateOf("") }
     var pullRequestBody by remember(mode) { mutableStateOf("") }
-    var baseBranch by remember(mode, defaultBaseBranch) { mutableStateOf(defaultBaseBranch.orEmpty()) }
+    var baseBranch by remember(mode) { mutableStateOf(defaultBaseBranch.orEmpty()) }
+    var baseBranchEdited by remember(mode) { mutableStateOf(false) }
     var pushToForkRemote by remember(mode) { mutableStateOf(false) }
     var selectedNextStep by remember(mode, initialNextStep) {
         mutableStateOf(initialNextStepForMode(mode, initialNextStep))
@@ -92,13 +93,18 @@ fun GitActionBottomSheet(
     LaunchedEffect(mode, initialNextStep) {
         selectedNextStep = initialNextStepForMode(mode, initialNextStep)
     }
+    LaunchedEffect(mode, defaultBaseBranch) {
+        if (!baseBranchEdited && baseBranch.isBlank()) {
+            baseBranch = defaultBaseBranch.orEmpty()
+        }
+    }
     LaunchedEffect(selectedNextStep) {
         if (!selectedNextStep.usesPushRemote) {
             pushToForkRemote = false
         }
     }
 
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = {
             if (!isBusy) onDismiss()
         },
@@ -142,7 +148,10 @@ fun GitActionBottomSheet(
                         body = pullRequestBody,
                         onBodyChange = { pullRequestBody = it },
                         baseBranch = baseBranch,
-                        onBaseBranchChange = { baseBranch = it },
+                        onBaseBranchChange = {
+                            baseBranchEdited = true
+                            baseBranch = it
+                        },
                         enabled = !isBusy,
                         showBase = selectedNextStep == GitActionNextStep.pushAndPullRequest,
                     )
@@ -154,7 +163,10 @@ fun GitActionBottomSheet(
                         body = pullRequestBody,
                         onBodyChange = { pullRequestBody = it },
                         baseBranch = baseBranch,
-                        onBaseBranchChange = { baseBranch = it },
+                        onBaseBranchChange = {
+                            baseBranchEdited = true
+                            baseBranch = it
+                        },
                         enabled = !isBusy,
                         showBase = true,
                     )

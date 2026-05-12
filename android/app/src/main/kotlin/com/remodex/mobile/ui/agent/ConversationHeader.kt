@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -60,6 +59,7 @@ import com.remodex.mobile.core.model.GitDiffTotals
 import com.remodex.mobile.core.model.TurnGitActionKind
 import com.remodex.mobile.ui.theme.AgentLightColors
 import com.remodex.mobile.ui.theme.RemodexGitAddition
+import com.remodex.mobile.ui.theme.RemodexDropdownMenu
 import com.remodex.mobile.ui.theme.isAgentLightChrome
 
 /** Truncate long filesystem paths for the header subtitle (middle ellipsis). */
@@ -516,7 +516,7 @@ private fun HeaderActions(
                         tint = tint,
                     )
                 }
-                DropdownMenu(
+                RemodexDropdownMenu(
                     expanded = overflowExpanded,
                     onDismissRequest = { onSetOverflowExpanded(false) },
                 ) {
@@ -587,7 +587,7 @@ private fun GitActionsDropdown(
     isGitInitialized: Boolean,
     onSelect: (TurnGitActionKind) -> Unit,
 ) {
-    DropdownMenu(
+    RemodexDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
     ) {

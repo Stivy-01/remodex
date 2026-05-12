@@ -14,7 +14,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -42,6 +41,7 @@ import com.remodex.mobile.core.model.CommandExecutionDetails
 import com.remodex.mobile.data.TurnCommandExecutionPresentation
 import com.remodex.mobile.data.TurnCommandExecutionPreviewMerge
 import com.remodex.mobile.data.TurnTimelineRichContentCache
+import com.remodex.mobile.ui.theme.RemodexModalBottomSheet
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -137,7 +137,7 @@ private fun CommandExecutionDetailSheet(
         }
     }
 
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {

@@ -30,11 +30,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,13 +53,13 @@ fun DesignWorkspaceScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val uiMode by viewModel.uiMode.collectAsState()
-    val generationState by viewModel.generationState.collectAsState()
-    val currentDocument by viewModel.currentDocument.collectAsState()
-    val snapshotRenderState by viewModel.snapshotRenderState.collectAsState()
-    val selectedNode by viewModel.selectedNode.collectAsState()
-    val exportResult by viewModel.exportResult.collectAsState()
-    val promptText by viewModel.promptText.collectAsState()
+    val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
+    val generationState by viewModel.generationState.collectAsStateWithLifecycle()
+    val currentDocument by viewModel.currentDocument.collectAsStateWithLifecycle()
+    val snapshotRenderState by viewModel.snapshotRenderState.collectAsStateWithLifecycle()
+    val selectedNode by viewModel.selectedNode.collectAsStateWithLifecycle()
+    val exportResult by viewModel.exportResult.collectAsStateWithLifecycle()
+    val promptText by viewModel.promptText.collectAsStateWithLifecycle()
     var showExportSheet by remember { mutableStateOf(false) }
 
     Scaffold(

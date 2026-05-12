@@ -65,12 +65,24 @@ class CommandExecutionDetailsStoreTest {
     }
 
     @Test
-    fun appendOutput_withoutItemIdOrDetailsDoesNotCreateDirtyState() {
+    fun appendOutput_withoutItemIdDoesNotCreateDirtyState() {
         val store = CommandExecutionDetailsStore()
 
         store.appendOutput(null, "ignored")
-        store.appendOutput("missing", "ignored")
 
         assertTrue(store.detailsByItemId.value.isEmpty())
+    }
+
+    @Test
+    fun appendOutput_beforeStateCreatesPlaceholderAndPreservesOutput() {
+        val store = CommandExecutionDetailsStore()
+
+        store.appendOutput("item-1", "first output\n")
+        store.upsertFromState("item-1", "git status", "/repo", null, null)
+
+        val details = store.detailsByItemId.value.getValue("item-1")
+        assertEquals("git status", details.fullCommand)
+        assertEquals("/repo", details.cwd)
+        assertEquals("first output\n", details.outputTail)
     }
 }

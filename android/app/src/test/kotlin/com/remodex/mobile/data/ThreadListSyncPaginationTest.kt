@@ -106,6 +106,10 @@ private abstract class TestRepository : CodexRepository {
     override val olderHistoryErrorByThread: StateFlow<Map<String, String>> = MutableStateFlow(emptyMap())
     override val commandExecutionDetailsByItemId: StateFlow<Map<String, CommandExecutionDetails>> =
         MutableStateFlow(emptyMap())
+    override val turnDraftQueueDepthByThread: StateFlow<Map<String, Int>> = MutableStateFlow(emptyMap())
+    override val turnDraftQueuePreviewByThread: StateFlow<Map<String, List<QueuedTurnDraftPreview>>> =
+        MutableStateFlow(emptyMap())
+    override val pendingBranchPickerThreadId: StateFlow<String?> = MutableStateFlow(null)
     override val runningTurnIdByThread: StateFlow<Map<String, String>> = MutableStateFlow(emptyMap())
     override val protectedRunningFallbackThreadIds: StateFlow<Set<String>> = MutableStateFlow(emptySet())
     override val availableModels: StateFlow<List<CodexModelOption>> = MutableStateFlow(emptyList())

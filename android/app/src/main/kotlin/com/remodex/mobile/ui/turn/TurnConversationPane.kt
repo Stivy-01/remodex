@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,6 +87,7 @@ import com.remodex.mobile.ui.LocalAIChangeSetPersistence
 import com.remodex.mobile.ui.agent.MessageList
 import com.remodex.mobile.ui.home.RootReconnectRecoveryAction
 import com.remodex.mobile.ui.home.RootReconnectUiState
+import com.remodex.mobile.ui.theme.RemodexModalBottomSheet
 import com.remodex.mobile.services.CodexLookupService
 import com.remodex.mobile.services.isPluginListUnsupported
 import com.remodex.mobile.core.voice.BridgeVoiceRecorder
@@ -156,12 +156,12 @@ fun TurnConversationPane(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val aiChangeSetPersistence = LocalAIChangeSetPersistence.current
-    var sending by remember { mutableStateOf(false) }
-    var lastError by remember { mutableStateOf<String?>(null) }
-    var draft by rememberSaveable { mutableStateOf("") }
+    var sending by remember(threadId) { mutableStateOf(false) }
+    var lastError by remember(threadId) { mutableStateOf<String?>(null) }
+    var draft by rememberSaveable(threadId) { mutableStateOf("") }
     var isPlanModeEnabled by rememberSaveable(threadId) { mutableStateOf(false) }
     var expandedPlanAccessoryMessageId by rememberSaveable(threadId) { mutableStateOf<String?>(null) }
-    var composerAttachments by remember { mutableStateOf<List<TurnComposerAttachment>>(emptyList()) }
+    var composerAttachments by remember(threadId) { mutableStateOf<List<TurnComposerAttachment>>(emptyList()) }
     var mentionChips by remember(threadId) { mutableStateOf<List<ComposerMentionChipPayload>>(emptyList()) }
     var availableSkills by remember(threadId) { mutableStateOf<List<SkillAutocompleteSuggestion>>(emptyList()) }
     var availablePlugins by remember(threadId) { mutableStateOf<List<CodexPluginMetadata>>(emptyList()) }
@@ -2078,7 +2078,7 @@ private fun FullTimelineMessageSheet(
 ) {
     if (message == null) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {

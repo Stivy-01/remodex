@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,14 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.remodex.mobile.ui.theme.AgentLightColors
 import com.remodex.mobile.ui.theme.RemodexGitAddition
-import com.remodex.mobile.ui.theme.isAgentLightChrome
+import com.remodex.mobile.ui.theme.RemodexPopupSurface
 
 @Immutable
 enum class GitActionProgressPhase {
@@ -196,16 +191,11 @@ fun ThreadCompletionBanner(
             return@AnimatedVisibility
         }
         val msg = displayedBannerMessage ?: return@AnimatedVisibility
-        Surface(
+        RemodexPopupSurface(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 8.dp)
-                    .border(0.5.dp, bannerBorderColor(), RoundedCornerShape(16.dp)),
-            shape = RoundedCornerShape(16.dp),
-            color = bannerSurfaceColor(),
-            tonalElevation = if (isAgentLightChrome()) 0.dp else 2.dp,
-            shadowElevation = if (isAgentLightChrome()) 8.dp else 3.dp,
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
         ) {
             Row(
                 modifier =
@@ -234,16 +224,11 @@ private fun GitActionProgressBanner(
     progress: GitActionProgressBannerState,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    RemodexPopupSurface(
         modifier =
             modifier
                 .padding(horizontal = 18.dp, vertical = 8.dp)
-                .widthIn(max = 430.dp)
-                .border(0.5.dp, bannerBorderColor(), RoundedCornerShape(15.dp)),
-        shape = RoundedCornerShape(15.dp),
-        color = bannerSurfaceColor(),
-        tonalElevation = if (isAgentLightChrome()) 0.dp else 2.dp,
-        shadowElevation = if (isAgentLightChrome()) 10.dp else 4.dp,
+                .widthIn(max = 430.dp),
     ) {
         Row(
             modifier =
@@ -347,18 +332,3 @@ private fun GitActionProgressStepRow(step: GitActionProgressStep) {
     }
 }
 
-@Composable
-private fun bannerSurfaceColor(): Color =
-    if (isAgentLightChrome()) {
-        AgentLightColors.Surface.copy(alpha = 0.96f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
-    }
-
-@Composable
-private fun bannerBorderColor(): Color =
-    if (isAgentLightChrome()) {
-        Color.White.copy(alpha = 0.62f)
-    } else {
-        Color.White.copy(alpha = 0.12f)
-    }

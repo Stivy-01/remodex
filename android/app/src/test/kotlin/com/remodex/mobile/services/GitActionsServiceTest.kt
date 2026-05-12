@@ -367,6 +367,16 @@ private class GitActionsFakeRepository(
     override val threads: StateFlow<List<CodexThread>> = MutableStateFlow(emptyList())
     override val activeThreadId: StateFlow<String?> = MutableStateFlow(null)
     override val messagesByThread: StateFlow<Map<String, List<CodexMessage>>> = MutableStateFlow(emptyMap())
+    override val threadHistoryPaginationByThread: StateFlow<Map<String, com.remodex.mobile.core.model.ThreadHistoryPaginationState>> =
+        MutableStateFlow(emptyMap())
+    override val loadingOlderHistoryThreadIds: StateFlow<Set<String>> = MutableStateFlow(emptySet())
+    override val olderHistoryErrorByThread: StateFlow<Map<String, String>> = MutableStateFlow(emptyMap())
+    override val commandExecutionDetailsByItemId: StateFlow<Map<String, com.remodex.mobile.core.model.CommandExecutionDetails>> =
+        MutableStateFlow(emptyMap())
+    override val turnDraftQueueDepthByThread: StateFlow<Map<String, Int>> = MutableStateFlow(emptyMap())
+    override val turnDraftQueuePreviewByThread: StateFlow<Map<String, List<com.remodex.mobile.data.QueuedTurnDraftPreview>>> =
+        MutableStateFlow(emptyMap())
+    override val pendingBranchPickerThreadId: StateFlow<String?> = MutableStateFlow(null)
     override val runningTurnIdByThread: StateFlow<Map<String, String>> = MutableStateFlow(emptyMap())
     override val protectedRunningFallbackThreadIds: StateFlow<Set<String>> = MutableStateFlow(emptySet())
     override val availableModels: StateFlow<List<CodexModelOption>> = MutableStateFlow(emptyList())
