@@ -1,7 +1,9 @@
 package com.remodex.mobile.ui.agent
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.HorizontalDivider
@@ -39,12 +42,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.composables.icons.lucide.R as LucideR
 import com.remodex.mobile.R
@@ -54,7 +59,10 @@ import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.ui.home.RootReconnectRecoveryAction
 import com.remodex.mobile.ui.home.RootReconnectUiState
 import com.remodex.mobile.ui.navigation.AppRoutes
+import com.remodex.mobile.ui.sidebar.SidebarActiveChatMetadata
 import com.remodex.mobile.ui.sidebar.SidebarScreen
+import com.remodex.mobile.ui.sidebar.SidebarColorPalette
+import com.remodex.mobile.ui.sidebar.rememberSidebarColorPalette
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -82,6 +90,7 @@ fun SidebarDrawerContent(
     sessionReady: Boolean,
     connectionState: ConnectionState,
     reconnectUiState: RootReconnectUiState,
+    activeChatMetadata: SidebarActiveChatMetadata? = null,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -89,6 +98,7 @@ fun SidebarDrawerContent(
     var coachmarkRootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var trophyLayoutCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var trophySpotlightPx by remember { mutableStateOf<TrophySpotlightPx?>(null) }
+    val sidebarColors = rememberSidebarColorPalette()
 
     LaunchedEffect(coachmarkRootCoords, trophyLayoutCoords, showTesterHqCoachmark) {
         if (!showTesterHqCoachmark) {
@@ -123,50 +133,25 @@ fun SidebarDrawerContent(
     }
 
     Box(
-        modifier =
+            modifier =
             modifier
                 .fillMaxHeight()
                 .fillMaxWidth()
+                .background(sidebarColors.background)
                 .onGloballyPositioned { coachmarkRootCoords = it },
     ) {
         Column(
             modifier = Modifier.fillMaxHeight().fillMaxWidth(),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                Icon(
-                    painter = painterResource(LucideR.drawable.lucide_ic_terminal),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp),
-                )
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(
-                    onClick = {
-                        scope.launch { runCatching { repository.refreshThreads() } }
-                    },
-                ) {
-                    Icon(
-                        painter = painterResource(LucideR.drawable.lucide_ic_refresh_cw),
-                        contentDescription = stringResource(R.string.cd_refresh_thread_list),
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 0.dp))
+            SidebarHeader(
+                connected = sessionReady && connectionState is ConnectionState.Connected,
+                status = drawerFooterStatus(connectionState, sessionReady),
+                onRefresh = { scope.launch { runCatching { repository.refreshThreads() } } },
+                colors = sidebarColors,
+            )
             SidebarScreen(
                 repository = repository,
+                activeChatMetadata = activeChatMetadata,
                 onOpenArchivedChats = {
                     drawerScope.launch {
                         closeDrawer()
@@ -177,10 +162,9 @@ fun SidebarDrawerContent(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
+                        .fillMaxWidth(),
             )
-            HorizontalDivider()
+            HorizontalDivider(color = sidebarColors.border)
             Column(
                 modifier =
                     Modifier
@@ -231,73 +215,35 @@ fun SidebarDrawerContent(
                     }
                 }
             }
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 10.dp),
-            ) {
-                Row(
-                    modifier = Modifier.align(Alignment.CenterStart),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    IconButton(
-                        onClick = {
-                            drawerScope.launch {
-                                closeDrawer()
-                                navController.navigate(AppRoutes.Settings)
-                            }
-                        },
-                    ) {
-                        Icon(
-                            painter = painterResource(LucideR.drawable.lucide_ic_settings),
-                            contentDescription = stringResource(R.string.nav_settings),
-                            modifier = Modifier.size(20.dp),
-                        )
+            SidebarBottomBar(
+                connected = sessionReady && connectionState is ConnectionState.Connected,
+                status = drawerFooterStatus(connectionState, sessionReady),
+                onSettings = {
+                    drawerScope.launch {
+                        closeDrawer()
+                        navController.navigate(AppRoutes.Settings)
                     }
+                },
+                onTesterHq =
                     if (FeatureFlags.betaEngagementEnabled) {
-                        IconButton(
-                            onClick = {
-                                drawerScope.launch {
-                                    closeDrawer()
-                                    navController.navigate(AppRoutes.TesterHq)
-                                }
-                            },
-                            modifier = Modifier.onGloballyPositioned { trophyLayoutCoords = it },
-                        ) {
-                            Icon(
-                                painter = painterResource(LucideR.drawable.lucide_ic_trophy),
-                                contentDescription = stringResource(R.string.nav_tester_hq),
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
-                    IconButton(
-                        onClick = {
+                        {
                             drawerScope.launch {
                                 closeDrawer()
-                                onOpenPairingScanner()
+                                navController.navigate(AppRoutes.TesterHq)
                             }
-                        },
-                    ) {
-                        Icon(
-                            painter = painterResource(LucideR.drawable.lucide_ic_scan_qr_code),
-                            contentDescription = stringResource(R.string.nav_pairing_scan),
-                            modifier = Modifier.size(20.dp),
-                        )
+                        }
+                    } else {
+                        null
+                    },
+                onScan = {
+                    drawerScope.launch {
+                        closeDrawer()
+                        onOpenPairingScanner()
                     }
-                }
-                Text(
-                    text = drawerFooterStatus(connectionState, sessionReady),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.End,
-                    modifier =
-                        Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(start = 104.dp),
-                )
-            }
+                },
+                trophyModifier = Modifier.onGloballyPositioned { trophyLayoutCoords = it },
+                colors = sidebarColors,
+            )
         }
 
         if (showTesterHqCoachmark && FeatureFlags.betaEngagementEnabled) {
@@ -306,6 +252,169 @@ fun SidebarDrawerContent(
                 onDismiss = { showTesterHqCoachmark = false },
             )
         }
+    }
+}
+
+@Composable
+private fun SidebarHeader(
+    connected: Boolean,
+    status: String,
+    onRefresh: () -> Unit,
+    colors: SidebarColorPalette,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = ">_ Remodex",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp),
+                color = colors.primaryText,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = onRefresh,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    painter = painterResource(LucideR.drawable.lucide_ic_refresh_cw),
+                    contentDescription = stringResource(R.string.cd_refresh_thread_list),
+                    modifier = Modifier.size(18.dp),
+                    tint = colors.mutedText,
+                )
+            }
+        }
+        SidebarConnectionLine(connected = connected, text = status, colors = colors)
+    }
+}
+
+@Composable
+private fun SidebarConnectionLine(
+    connected: Boolean,
+    text: String,
+    colors: SidebarColorPalette,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(if (connected) colors.green else colors.mutedText.copy(alpha = 0.45f)),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+            color = colors.secondaryText,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun SidebarBottomBar(
+    connected: Boolean,
+    status: String,
+    onSettings: () -> Unit,
+    onTesterHq: (() -> Unit)?,
+    onScan: () -> Unit,
+    trophyModifier: Modifier = Modifier,
+    colors: SidebarColorPalette,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SidebarFooterIcon(
+                icon = LucideR.drawable.lucide_ic_settings,
+                contentDescription = stringResource(R.string.nav_settings),
+                onClick = onSettings,
+                colors = colors,
+            )
+            if (onTesterHq != null) {
+                SidebarFooterIcon(
+                    icon = LucideR.drawable.lucide_ic_trophy,
+                    contentDescription = stringResource(R.string.nav_tester_hq),
+                    onClick = onTesterHq,
+                    colors = colors,
+                    modifier = trophyModifier,
+                )
+            }
+            SidebarFooterIcon(
+                icon = LucideR.drawable.lucide_ic_scan_qr_code,
+                contentDescription = stringResource(R.string.nav_pairing_scan),
+                onClick = onScan,
+                colors = colors,
+            )
+        }
+        Row(
+            modifier =
+                Modifier
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+                    .background(colors.surface)
+                    .padding(horizontal = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(if (connected) colors.green else colors.mutedText.copy(alpha = 0.45f)),
+            )
+            Text(
+                text = if (connected) "PC" else status,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp),
+                color = colors.primaryText,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SidebarFooterIcon(
+    icon: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    colors: SidebarColorPalette,
+    modifier: Modifier = Modifier,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(38.dp),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = contentDescription,
+            modifier = Modifier.size(22.dp),
+            tint = colors.mutedText,
+        )
     }
 }
 

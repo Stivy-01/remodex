@@ -8,14 +8,17 @@ import com.remodex.mobile.core.model.PendingApprovalRequest
 import com.remodex.mobile.core.model.PendingStructuredInputRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class IncomingEventRouterImageGenerationTest {
     @Test
     fun imageGenerationEnd_addsAssistantImageAttachment() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val router = newRouter(messageTimeline = timeline)
 
@@ -50,7 +53,7 @@ class IncomingEventRouterImageGenerationTest {
 
     @Test
     fun imageGenerationEnd_updatesExistingImageItemInsteadOfDuplicating() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val router = newRouter(messageTimeline = timeline)
 
@@ -87,7 +90,7 @@ class IncomingEventRouterImageGenerationTest {
         messageTimeline: MessageTimelineStore = MessageTimelineStore(),
     ): IncomingEventRouter =
         IncomingEventRouter(
-            scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined),
+            scope = CoroutineScope(UnconfinedTestDispatcher()),
             threads = MutableStateFlow<List<CodexThread>>(emptyList()),
             activeThreadId = MutableStateFlow(null),
             messageTimeline = messageTimeline,

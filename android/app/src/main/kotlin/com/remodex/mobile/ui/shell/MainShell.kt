@@ -54,6 +54,7 @@ import androidx.navigation.compose.rememberNavController
 import com.remodex.mobile.AppContainer
 import com.remodex.mobile.R
 import com.remodex.mobile.core.config.FeatureFlags
+import com.remodex.mobile.core.model.AIUnifiedPatchParser
 import com.remodex.mobile.core.model.GitBranchesWithStatusResult
 import com.remodex.mobile.core.model.GitDiffTotals
 import com.remodex.mobile.core.model.GitRepoSyncResult
@@ -86,6 +87,8 @@ import com.remodex.mobile.ui.home.RootViewModel
 import com.remodex.mobile.ui.home.ThreadCompletionBanner
 import com.remodex.mobile.ui.navigation.AppNavHost
 import com.remodex.mobile.ui.navigation.AppRoutes
+import com.remodex.mobile.ui.sidebar.SidebarActiveChatMetadata
+import com.remodex.mobile.ui.sidebar.rememberSidebarColorPalette
 import com.remodex.mobile.ui.turn.LocalOpenRepoDiffForMarkdownLink
 import com.remodex.mobile.ui.turn.RepoMarkdownFileLink
 import kotlinx.coroutines.delay
@@ -110,6 +113,7 @@ fun MainShell(
     val currentRoute = currentBackStackEntry?.destination?.route
     val showShellHeader = currentRoute == AppRoutes.Home
     val lifecycleOwner = LocalLifecycleOwner.current
+    val sidebarColors = rememberSidebarColorPalette()
 
     val ready by repository.isSessionReady.collectAsStateWithLifecycle()
     val currentReady by rememberUpdatedState(ready)
@@ -146,6 +150,7 @@ fun MainShell(
     var repoDiffSheetFullPatch by remember { mutableStateOf("") }
     var repoDiffSheetFullLoading by remember { mutableStateOf(false) }
     var repoDiffSheetFullError by remember { mutableStateOf<String?>(null) }
+    var repoDiffPrefetchRequestId by remember { mutableStateOf(0) }
     var repoDiffMarkdownFocusQuery by remember { mutableStateOf<String?>(null) }
     var gitActionBusy by remember { mutableStateOf(false) }
     var gitActionError by remember { mutableStateOf<String?>(null) }
@@ -190,6 +195,30 @@ fun MainShell(
     val threadMessages =
         remember(activeThreadId, messagesByThread) {
             activeThreadId?.let { tid -> messagesByThread[tid] }.orEmpty()
+        }
+    val lastTurnDiffTotals =
+        remember(threadMessages) {
+            val rows = RepoDiffLastTurnAggregator.fileRowsFromLastTurn(threadMessages)
+            if (rows.isEmpty()) {
+                null
+            } else {
+                val additions = rows.sumOf { AIUnifiedPatchParser.additionsDeletionsForDisplay(it.chunk).first }
+                val deletions = rows.sumOf { AIUnifiedPatchParser.additionsDeletionsForDisplay(it.chunk).second }
+                GitDiffTotals(additions = additions, deletions = deletions).takeIf { it.hasChanges }
+            }
+        }
+    val sidebarActiveChatMetadata =
+        remember(activeThreadId, activeThread, repoStatusSnapshot, lastTurnDiffTotals) {
+            if (activeThreadId == null) {
+                null
+            } else {
+                SidebarActiveChatMetadata(
+                    branch = repoStatusSnapshot?.currentBranch,
+                    additions = lastTurnDiffTotals?.additions,
+                    deletions = lastTurnDiffTotals?.deletions,
+                    model = activeThread?.model,
+                )
+            }
         }
 
     DisposableEffect(lifecycleOwner) {
@@ -245,7 +274,7 @@ fun MainShell(
     val isWorktreeProject = activeThread?.isManagedWorktreeProject == true
     LaunchedEffect(repoStatusSnapshot?.state, gitCwd, showGitControls) {
         val needsInit = repoStatusSnapshot?.state in setOf("not_initialized", "missing_local_repo")
-        if (showGitControls && gitCwd != null && needsInit) {
+        if (showGitControls && needsInit) {
             showGitInitPrompt = true
         } else {
             showGitInitPrompt = false
@@ -292,12 +321,18 @@ fun MainShell(
     fun enqueueRepoDiffFullTreePrefetch() {
         val tid = activeThreadId
         val cwd = gitCwd
+        repoDiffPrefetchRequestId += 1
+        val requestId = repoDiffPrefetchRequestId
         if (tid != null && !cwd.isNullOrBlank()) {
             val cached = cachedFullWorkingTreeDiff?.takeIf { it.first == tid }
             repoDiffSheetFullPatch = cached?.second.orEmpty()
             repoDiffSheetFullLoading = cached == null || cached.second.isBlank()
             scope.launch {
-                runCatching { GitActionsService(repository, cwd).diff() }
+                val result = runCatching { GitActionsService(repository, cwd).diff() }
+                if (repoDiffPrefetchRequestId != requestId || activeThreadId != tid || gitCwd != cwd) {
+                    return@launch
+                }
+                result
                     .onSuccess {
                         cachedFullWorkingTreeDiff = tid to it.patch
                         repoDiffSheetFullPatch = it.patch
@@ -931,7 +966,10 @@ fun MainShell(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(
+                drawerContainerColor = sidebarColors.background,
+                drawerContentColor = sidebarColors.primaryText,
+            ) {
                 SidebarDrawerContent(
                     repository = repository,
                     navController = navController,
@@ -944,6 +982,7 @@ fun MainShell(
                     sessionReady = ready,
                     connectionState = connectionState,
                     reconnectUiState = reconnectUiState,
+                    activeChatMetadata = sidebarActiveChatMetadata,
                 )
             }
         },

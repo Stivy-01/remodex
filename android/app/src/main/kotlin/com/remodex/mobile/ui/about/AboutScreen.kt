@@ -105,11 +105,11 @@ private fun readAppVersionName(context: Context): String =
         val pm = context.packageManager
         val pkg = context.packageName
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0)).versionName ?: "0.1.2"
+            pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0)).versionName ?: "0.1.3"
         } else {
             @Suppress("DEPRECATION")
-            pm.getPackageInfo(pkg, 0).versionName ?: "0.1.2"
+            pm.getPackageInfo(pkg, 0).versionName ?: "0.1.3"
         }
     } catch (_: Exception) {
-        "0.1.2"
+        "0.1.3"
     }

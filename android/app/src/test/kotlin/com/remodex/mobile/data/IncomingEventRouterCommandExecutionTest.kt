@@ -9,10 +9,13 @@ import com.remodex.mobile.core.model.PendingStructuredInputRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class IncomingEventRouterCommandExecutionTest {
     @Test
     fun execCommandBegin_withCallIdCreatesDetails() {
@@ -110,7 +113,7 @@ class IncomingEventRouterCommandExecutionTest {
 
     @Test
     fun modernOutputDelta_updatesTimelineAndDetails() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val detailsStore = CommandExecutionDetailsStore()
 
@@ -142,7 +145,7 @@ class IncomingEventRouterCommandExecutionTest {
 
     @Test
     fun outputDeltaWithoutItemId_updatesTimelineOnly() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val detailsStore = CommandExecutionDetailsStore()
 
@@ -170,7 +173,7 @@ class IncomingEventRouterCommandExecutionTest {
 
     @Test
     fun legacyOutputDelta_doesNotReplaceExistingPreviewText() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val detailsStore = CommandExecutionDetailsStore()
             val router = newRouter(messageTimeline = timeline, commandDetailsStore = detailsStore)
@@ -210,7 +213,7 @@ class IncomingEventRouterCommandExecutionTest {
 
     @Test
     fun legacyEnd_completesExistingPreviewRow() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val detailsStore = CommandExecutionDetailsStore()
             val router = newRouter(messageTimeline = timeline, commandDetailsStore = detailsStore)
@@ -252,7 +255,7 @@ class IncomingEventRouterCommandExecutionTest {
         commandDetailsStore: CommandExecutionDetailsStore = CommandExecutionDetailsStore(),
     ): IncomingEventRouter =
         IncomingEventRouter(
-            scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined),
+            scope = CoroutineScope(UnconfinedTestDispatcher()),
             threads = MutableStateFlow<List<CodexThread>>(emptyList()),
             activeThreadId = MutableStateFlow(null),
             messageTimeline = messageTimeline,

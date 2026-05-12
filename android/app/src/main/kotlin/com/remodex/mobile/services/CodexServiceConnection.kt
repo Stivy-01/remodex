@@ -111,8 +111,12 @@ internal suspend fun CodexService.resetBridgeSession(preservePresentationState: 
         _threads.value = emptyList()
         _activeThreadId.value = null
     }
-    _runningTurnIdByThread.value = emptyMap()
-    _protectedRunningFallbackThreadIds.value = emptySet()
+    if (!preservePresentationState) {
+        synchronized(runningTurnStateLock) {
+            _runningTurnIdByThread.value = emptyMap()
+            _protectedRunningFallbackThreadIds.value = emptySet()
+        }
+    }
     clearPendingServerRequests()
     hydratedThreadIds.clear()
     resumedThreadIds.clear()
@@ -126,7 +130,9 @@ internal suspend fun CodexService.resetBridgeSession(preservePresentationState: 
     testRpcRequestHandler = null
     loadingHistory.clear()
     incomingRouter.resetCaches()
-    commandExecutionDetailsStore.clear()
+    if (!preservePresentationState) {
+        commandExecutionDetailsStore.clear()
+    }
     wireJob?.cancel()
     wireJob = null
     wireInbound?.close()

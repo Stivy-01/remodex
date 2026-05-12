@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -53,6 +52,7 @@ import com.composables.icons.lucide.R as LucideR
 import com.remodex.mobile.R
 import com.remodex.mobile.ui.theme.AgentLightColors
 import com.remodex.mobile.ui.theme.RemodexComposerCapsuleChrome
+import com.remodex.mobile.ui.theme.RemodexDropdownMenu
 import com.remodex.mobile.ui.theme.isAgentLightChrome
 import com.valentinilk.shimmer.shimmer
 
@@ -288,7 +288,7 @@ internal fun TurnComposerBar(
                                 tint = neutralToolbarIconTint,
                             )
                         }
-                        DropdownMenu(
+                        RemodexDropdownMenu(
                             expanded = isAttachmentMenuExpanded,
                             onDismissRequest = { isAttachmentMenuExpanded = false },
                         ) {

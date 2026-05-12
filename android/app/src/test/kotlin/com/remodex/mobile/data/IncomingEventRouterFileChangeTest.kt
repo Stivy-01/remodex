@@ -7,14 +7,17 @@ import com.remodex.mobile.core.model.PendingApprovalRequest
 import com.remodex.mobile.core.model.PendingStructuredInputRequest
 import kotlin.test.Test
 import kotlin.test.assertTrue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class IncomingEventRouterFileChangeTest {
     @Test
     fun fileChangeDelta_ignoresGlobLikeImageReferencesAndPreviewErrors() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
 
             newRouter(timeline).dispatchNotification(
@@ -46,7 +49,7 @@ class IncomingEventRouterFileChangeTest {
 
     private fun newRouter(messageTimeline: MessageTimelineStore): IncomingEventRouter =
         IncomingEventRouter(
-            scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined),
+            scope = CoroutineScope(UnconfinedTestDispatcher()),
             threads = MutableStateFlow<List<CodexThread>>(emptyList()),
             activeThreadId = MutableStateFlow(null),
             messageTimeline = messageTimeline,

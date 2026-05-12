@@ -4,6 +4,7 @@ import com.remodex.mobile.R
 import com.remodex.mobile.core.model.ContextWindowUsage
 import com.remodex.mobile.core.model.ContextWindowUsageCodec
 import com.remodex.mobile.core.model.JSONValue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -27,27 +28,33 @@ internal fun CodexService.applyLiveContextWindowUsage(
 ) {
     val tid = threadId.trim()
     if (tid.isEmpty()) return
-    val prev = _contextWindowUsageByThread.value[tid]
-    if (prev != null &&
-        prev.tokensUsed == usage.tokensUsed &&
-        prev.tokenLimit == usage.tokenLimit
-    ) {
-        return
+    synchronized(contextWindowUsageStateLock) {
+        contextWindowUsageRevisionByThread[tid] = nextContextWindowUsageRevision(tid)
+        val prev = _contextWindowUsageByThread.value[tid]
+        if (prev != null &&
+            prev.tokensUsed == usage.tokensUsed &&
+            prev.tokenLimit == usage.tokenLimit
+        ) {
+            return
+        }
+        _contextWindowUsageErrorByThread.value =
+            _contextWindowUsageErrorByThread.value.filterKeys { it != tid }
+        _contextWindowUsageByThread.value = _contextWindowUsageByThread.value + (tid to usage)
     }
-    _contextWindowUsageErrorByThread.value =
-        _contextWindowUsageErrorByThread.value.filterKeys { it != tid }
-    _contextWindowUsageByThread.value = _contextWindowUsageByThread.value + (tid to usage)
 }
 
 internal suspend fun CodexService.refreshContextWindowUsageInternal(threadId: String) {
     val tid = threadId.trim()
     if (tid.isEmpty()) return
 
-    _contextWindowUsageLoadingThreads.value = _contextWindowUsageLoadingThreads.value + tid
+    val revision = beginContextWindowUsageRefresh(tid)
     try {
         if (!sessionReady) {
-            _contextWindowUsageErrorByThread.value =
-                _contextWindowUsageErrorByThread.value + (tid to appContext.getString(R.string.usage_context_window_disconnected))
+            applyContextWindowUsageRefreshError(
+                tid,
+                appContext.getString(R.string.usage_context_window_disconnected),
+                revision,
+            )
             return
         }
 
@@ -63,28 +70,79 @@ internal suspend fun CodexService.refreshContextWindowUsageInternal(threadId: St
             }
         val resultObject = response.result?.objectValue
         if (resultObject == null) {
-            _contextWindowUsageErrorByThread.value =
-                _contextWindowUsageErrorByThread.value + (tid to appContext.getString(R.string.usage_context_window_invalid_response))
+            applyContextWindowUsageRefreshError(
+                tid,
+                appContext.getString(R.string.usage_context_window_invalid_response),
+                revision,
+            )
             return
         }
 
         val usageValue = resultObject["usage"]
-        _contextWindowUsageErrorByThread.value = _contextWindowUsageErrorByThread.value.filterKeys { it != tid }
-
         val decoded = ContextWindowUsageCodec.decode(usageValue) ?: ContextWindowUsage.Zero
-        _contextWindowUsageByThread.value = _contextWindowUsageByThread.value + (tid to decoded)
+        applyContextWindowUsageRefreshSuccess(tid, decoded, revision)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         val msg = e.message?.trim().orEmpty()
-        _contextWindowUsageErrorByThread.value =
-            _contextWindowUsageErrorByThread.value + (
-                tid to
-                    if (msg.isEmpty()) {
-                        appContext.getString(R.string.usage_context_window_load_failed)
-                    } else {
-                        msg
-                    }
-            )
+        applyContextWindowUsageRefreshError(
+            tid,
+            if (msg.isEmpty()) {
+                appContext.getString(R.string.usage_context_window_load_failed)
+            } else {
+                msg
+            },
+            revision,
+        )
     } finally {
+        finishContextWindowUsageRefresh(tid, revision)
+    }
+}
+
+private fun CodexService.beginContextWindowUsageRefresh(tid: String): Long =
+    synchronized(contextWindowUsageStateLock) {
+        val revision = nextContextWindowUsageRevision(tid)
+        contextWindowUsageRevisionByThread[tid] = revision
+        contextWindowUsageLoadingRevisionByThread[tid] = revision
+        _contextWindowUsageLoadingThreads.value = _contextWindowUsageLoadingThreads.value + tid
+        revision
+    }
+
+private fun CodexService.applyContextWindowUsageRefreshSuccess(
+    tid: String,
+    usage: ContextWindowUsage,
+    revision: Long,
+) {
+    synchronized(contextWindowUsageStateLock) {
+        if (contextWindowUsageRevisionByThread[tid] != revision) return
+        _contextWindowUsageErrorByThread.value =
+            _contextWindowUsageErrorByThread.value.filterKeys { it != tid }
+        _contextWindowUsageByThread.value = _contextWindowUsageByThread.value + (tid to usage)
+    }
+}
+
+private fun CodexService.applyContextWindowUsageRefreshError(
+    tid: String,
+    message: String,
+    revision: Long,
+) {
+    synchronized(contextWindowUsageStateLock) {
+        if (contextWindowUsageRevisionByThread[tid] != revision) return
+        _contextWindowUsageErrorByThread.value =
+            _contextWindowUsageErrorByThread.value + (tid to message)
+    }
+}
+
+private fun CodexService.finishContextWindowUsageRefresh(
+    tid: String,
+    revision: Long,
+) {
+    synchronized(contextWindowUsageStateLock) {
+        if (contextWindowUsageLoadingRevisionByThread[tid] != revision) return
+        contextWindowUsageLoadingRevisionByThread.remove(tid)
         _contextWindowUsageLoadingThreads.value = _contextWindowUsageLoadingThreads.value - tid
     }
 }
+
+private fun CodexService.nextContextWindowUsageRevision(tid: String): Long =
+    (contextWindowUsageRevisionByThread[tid] ?: 0L) + 1L

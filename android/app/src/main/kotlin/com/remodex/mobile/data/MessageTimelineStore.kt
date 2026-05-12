@@ -611,6 +611,39 @@ internal class MessageTimelineStore(
         }
     }
 
+    suspend fun ensureStreamingAssistantPlaceholder(
+        threadId: String,
+        turnId: String?,
+    ) {
+        val resolvedTurnId = turnId?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        mutex.withLock {
+            val map = _messagesByThread.value.toMutableMap()
+            val list = map[threadId].orEmpty().toMutableList()
+            val existing =
+                list.any { message ->
+                    message.role == CodexMessageRole.assistant &&
+                        message.kind == CodexMessageKind.chat &&
+                        message.turnId == resolvedTurnId &&
+                        message.isStreaming
+                }
+            if (!existing) {
+                list.add(
+                    CodexMessage(
+                        threadId = threadId,
+                        role = CodexMessageRole.assistant,
+                        kind = CodexMessageKind.chat,
+                        text = "",
+                        createdAt = Instant.now(),
+                        turnId = resolvedTurnId,
+                        isStreaming = true,
+                    ),
+                )
+                map[threadId] = list
+                publishMessages(map)
+            }
+        }
+    }
+
     suspend fun completeAssistantMessage(
         threadId: String,
         turnId: String?,
@@ -937,6 +970,28 @@ internal class MessageTimelineStore(
                     reassignOrderIndexesInCurrentOrder(list)
                 }
             }
+            map[threadId] = list
+            publishMessages(map)
+        }
+    }
+
+    suspend fun attachLatestTurnlessUserMessageToTurn(
+        threadId: String,
+        turnId: String,
+    ) {
+        val resolvedTurnId = turnId.trim().takeIf { it.isNotEmpty() } ?: return
+        mutex.withLock {
+            val map = _messagesByThread.value.toMutableMap()
+            val list = map[threadId].orEmpty().toMutableList()
+            val idx =
+                list.indices.reversed().firstOrNull { index ->
+                    val candidate = list[index]
+                    candidate.role == CodexMessageRole.user &&
+                        candidate.kind == CodexMessageKind.chat &&
+                        candidate.turnId == null &&
+                        candidate.deliveryState == CodexMessageDeliveryState.confirmed
+                } ?: return@withLock
+            list[idx] = list[idx].copy(turnId = resolvedTurnId)
             map[threadId] = list
             publishMessages(map)
         }

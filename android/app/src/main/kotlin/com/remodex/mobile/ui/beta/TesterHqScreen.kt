@@ -37,8 +37,6 @@ import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,6 +74,7 @@ import com.remodex.mobile.beta.BetaMissionStatus
 import com.remodex.mobile.beta.DEFAULT_BETA_REWARD_COPY
 import com.remodex.mobile.beta.TesterHqPresentation
 import com.remodex.mobile.beta.TesterHqPresentationBuilder
+import com.remodex.mobile.ui.theme.RemodexPopupSurface
 import com.remodex.mobile.ui.theme.remodexScreenTopAppBarColors
 import kotlinx.coroutines.launch
 
@@ -781,22 +780,10 @@ private fun TerminalPanel(
     borderAccent: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
+    RemodexPopupSurface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
-            ),
-        border =
-            BorderStroke(
-                1.dp,
-                if (borderAccent) {
-                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
-                } else {
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)
-                },
-            ),
+        panel = true,
+        accentBorder = borderAccent,
     ) {
         Column(
             modifier = Modifier.padding(16.dp),

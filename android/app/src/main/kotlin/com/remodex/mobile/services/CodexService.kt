@@ -178,6 +178,9 @@ class CodexService(
     internal val _contextWindowUsageErrorByThread = MutableStateFlow<Map<String, String>>(emptyMap())
     override val contextWindowUsageErrorByThread: StateFlow<Map<String, String>> =
         _contextWindowUsageErrorByThread.asStateFlow()
+    internal val contextWindowUsageStateLock = Any()
+    internal val contextWindowUsageRevisionByThread = mutableMapOf<String, Long>()
+    internal val contextWindowUsageLoadingRevisionByThread = mutableMapOf<String, Long>()
 
     private val runtimeSelection = sessionPersistence.loadRuntimeSelection()
 
@@ -274,6 +277,7 @@ class CodexService(
     internal val _olderHistoryErrorByThread = MutableStateFlow<Map<String, String>>(emptyMap())
     override val olderHistoryErrorByThread: StateFlow<Map<String, String>> =
         _olderHistoryErrorByThread.asStateFlow()
+    internal val runningTurnStateLock = Any()
 
     /** Thread ids that already received a successful `thread/resume` this session — parity iOS `resumedThreadIDs`. */
     internal val resumedThreadIds = Collections.synchronizedSet(mutableSetOf<String>())
@@ -368,12 +372,14 @@ class CodexService(
     ) {
         val th = threadId.trim()
         if (th.isEmpty()) return
-        _protectedRunningFallbackThreadIds.value =
-            if (active) {
-                _protectedRunningFallbackThreadIds.value + th
-            } else {
-                _protectedRunningFallbackThreadIds.value - th
-            }
+        synchronized(runningTurnStateLock) {
+            _protectedRunningFallbackThreadIds.value =
+                if (active) {
+                    _protectedRunningFallbackThreadIds.value + th
+                } else {
+                    _protectedRunningFallbackThreadIds.value - th
+                }
+        }
     }
 
     internal fun noteTurnStarted(
@@ -383,15 +389,19 @@ class CodexService(
         val th = threadId.trim()
         val t = turnId.trim()
         if (th.isEmpty() || t.isEmpty()) return
-        _runningTurnIdByThread.value = _runningTurnIdByThread.value + (th to t)
-        _protectedRunningFallbackThreadIds.value = _protectedRunningFallbackThreadIds.value - th
+        synchronized(runningTurnStateLock) {
+            _runningTurnIdByThread.value = _runningTurnIdByThread.value + (th to t)
+            _protectedRunningFallbackThreadIds.value = _protectedRunningFallbackThreadIds.value - th
+        }
     }
 
     internal fun noteTurnFinished(threadId: String) {
         val th = threadId.trim()
         if (th.isEmpty()) return
-        _runningTurnIdByThread.value = _runningTurnIdByThread.value.filterKeys { it != th }
-        _protectedRunningFallbackThreadIds.value = _protectedRunningFallbackThreadIds.value - th
+        synchronized(runningTurnStateLock) {
+            _runningTurnIdByThread.value = _runningTurnIdByThread.value.filterKeys { it != th }
+            _protectedRunningFallbackThreadIds.value = _protectedRunningFallbackThreadIds.value - th
+        }
     }
 
     /** Single running thread fallback for legacy token usage events without explicit thread id. */

@@ -94,8 +94,6 @@ private suspend fun CodexService.setThreadArchivedLocally(
     resumedThreadIds.remove(threadId)
     hydratedThreadIds.remove(threadId)
     loadingHistory.remove(threadId)
-    _protectedRunningFallbackThreadIds.value = _protectedRunningFallbackThreadIds.value - threadId
-    _runningTurnIdByThread.value = _runningTurnIdByThread.value - threadId
     messageTimelineStore.removeThreadMessages(threadId)
     sessionPersistence.removeThreadRename(threadId)
     associatedManagedWorktreePathByThreadId.remove(threadId)

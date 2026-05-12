@@ -16,7 +16,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,6 +47,7 @@ import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.data.QueuedTurnDraftPreview
 import com.remodex.mobile.services.AiChangeSetRevertService
 import com.remodex.mobile.ui.LocalAIChangeSetPersistence
+import com.remodex.mobile.ui.theme.RemodexModalBottomSheet
 import java.time.Instant
 import kotlinx.coroutines.launch
 
@@ -65,7 +65,7 @@ internal fun ThreadUsageStatusBottomSheet(
 ) {
     if (!visible) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {

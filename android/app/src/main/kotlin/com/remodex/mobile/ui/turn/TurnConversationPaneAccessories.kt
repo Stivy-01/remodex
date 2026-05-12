@@ -11,7 +11,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,6 +30,7 @@ import com.remodex.mobile.core.model.CodexCollaborationModeKind
 import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexPlanStepStatus
 import com.remodex.mobile.data.QueuedTurnDraftPreview
+import com.remodex.mobile.ui.theme.RemodexModalBottomSheet
 
 @Composable
 internal fun QueuedDraftsCard(
@@ -204,7 +204,7 @@ internal fun WorktreeHandoffActionSheet(
     val requiresBaseBranch = model.requiresBaseBranch
     val canConfirm = model.canConfirm
 
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
@@ -364,7 +364,7 @@ internal fun ForkThreadActionSheet(
 ) {
     if (!visible) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
@@ -431,7 +431,7 @@ internal fun PlanDetailsActionSheet(
     if (!visible || message == null) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val snapshot = PlanAccessorySnapshot.fromMessage(message)
-    ModalBottomSheet(
+    RemodexModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {

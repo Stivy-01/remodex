@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +37,8 @@ import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.ui.theme.AgentLightColors
 import com.remodex.mobile.ui.theme.RemodexFullAccessIconDark
 import com.remodex.mobile.ui.theme.RemodexFullAccessIconLight
+import com.remodex.mobile.ui.theme.RemodexDropdownMenu
+import com.remodex.mobile.ui.theme.RemodexPopupChrome
 import com.remodex.mobile.ui.theme.isAgentLightChrome
 
 /**
@@ -90,12 +91,7 @@ internal fun TurnComposerSecondaryBar(
     val agentLightChrome = isAgentLightChrome()
     val envPillShape = RoundedCornerShape(50)
 
-    val envPillBg =
-        if (agentLightChrome) {
-            AgentLightColors.Surface.copy(alpha = 0.93f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        }
+    val envPillBg = RemodexPopupChrome.surfaceColor()
 
     val envPillChrome: Modifier =
         if (agentLightChrome) {
@@ -106,14 +102,16 @@ internal fun TurnComposerSecondaryBar(
                     ambientColor = Color.Black.copy(alpha = 0.06f),
                     spotColor = Color.Black.copy(alpha = 0.06f),
                 )
-                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.42f), envPillShape)
+                .border(RemodexPopupChrome.borderStroke(), envPillShape)
         } else {
-            Modifier.shadow(
-                elevation = 3.dp,
-                shape = envPillShape,
-                ambientColor = Color.Black.copy(alpha = 0.10f),
-                spotColor = Color.Black.copy(alpha = 0.10f),
-            )
+            Modifier
+                .shadow(
+                    elevation = 3.dp,
+                    shape = envPillShape,
+                    ambientColor = Color.Black.copy(alpha = 0.10f),
+                    spotColor = Color.Black.copy(alpha = 0.10f),
+                )
+                .border(RemodexPopupChrome.borderStroke(), envPillShape)
         }
 
     val envLabelTint =
@@ -187,7 +185,7 @@ internal fun TurnComposerSecondaryBar(
                 }
             }
 
-            DropdownMenu(
+            RemodexDropdownMenu(
                 expanded = runtimeMenuExpanded,
                 onDismissRequest = { runtimeMenuExpanded = false },
             ) {
@@ -287,7 +285,7 @@ internal fun TurnComposerSecondaryBar(
                 }
             }
 
-            DropdownMenu(
+            RemodexDropdownMenu(
                 expanded = accessMenuExpanded,
                 onDismissRequest = { accessMenuExpanded = false },
             ) {

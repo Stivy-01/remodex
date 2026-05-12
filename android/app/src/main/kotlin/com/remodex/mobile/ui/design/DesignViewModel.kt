@@ -7,11 +7,14 @@ import com.remodex.mobile.ui.design.canvas.CanvasBridge
 import com.remodex.mobile.ui.design.canvas.CanvasRenderState
 import com.remodex.mobile.ui.design.data.DesignRepository
 import com.remodex.mobile.ui.design.data.MockDesignRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class DesignViewModel(
@@ -69,6 +72,7 @@ class DesignViewModel(
 
     private val _promptText = MutableStateFlow("")
     val promptText: StateFlow<String> = _promptText.asStateFlow()
+    private var activeGenerationJob: Job? = null
 
     val canvasBridge = CanvasBridge(
         onCanvasReady = { /* WebView initialized */ },
@@ -108,7 +112,7 @@ class DesignViewModel(
             ),
         )
 
-        viewModelScope.launch {
+        startGenerationJob {
             val stepLabels = listOf(
                 "Understanding prompt",
                 "Creating layout",
@@ -125,30 +129,30 @@ class DesignViewModel(
                 if (i > 0) {
                     updated[i - 1] = GenerationStep(stepLabels[i - 1], GenerationStepStatus.DONE)
                 }
-                _generationState.value = _generationState.value.copy(steps = updated)
+                _generationState.update { it.copy(steps = updated) }
             }
 
             delay(400)
-            _generationState.value = _generationState.value.copy(
-                status = "rendering_snapshot",
-                steps = _generationState.value.steps.map {
-                    GenerationStep(it.label, GenerationStepStatus.DONE)
-                },
-            )
-
-            val result = runCatching {
-                repository.generateDesign(
-                    projectId = "mock_project",
-                    prompt = prompt,
-                    target = null,
+            _generationState.update { current ->
+                current.copy(
+                    status = "rendering_snapshot",
+                    steps = current.steps.map {
+                        GenerationStep(it.label, GenerationStepStatus.DONE)
+                    },
                 )
             }
 
-            result.fold(
-                onSuccess = { genState ->
-                    _generationState.value = genState
-                    if (genState.documentId != null) {
-                        _currentDocument.value = DesignDocument(
+            try {
+                val genState =
+                    repository.generateDesign(
+                        projectId = "mock_project",
+                        prompt = prompt,
+                        target = null,
+                    )
+                _generationState.value = genState
+                if (genState.documentId != null) {
+                    _currentDocument.value =
+                        DesignDocument(
                             id = genState.documentId,
                             projectId = "mock_project",
                             version = genState.documentVersion,
@@ -158,13 +162,15 @@ class DesignViewModel(
                             thumbnailUrl = null,
                             status = DesignDocumentStatus.READY,
                         )
-                        _snapshotVersion.value = genState.documentVersion
-                    }
-                },
-                onFailure = { error ->
-                    _generationState.value = _generationState.value.copy(
+                    _snapshotVersion.value = genState.documentVersion
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _generationState.update { current ->
+                    current.copy(
                         status = "error",
-                        steps = _generationState.value.steps.map {
+                        steps = current.steps.map {
                             if (it.status == GenerationStepStatus.ACTIVE) {
                                 GenerationStep(it.label, GenerationStepStatus.ERROR)
                             } else {
@@ -172,8 +178,8 @@ class DesignViewModel(
                             }
                         },
                     )
-                },
-            )
+                }
+            }
         }
     }
 
@@ -181,7 +187,7 @@ class DesignViewModel(
         if (prompt.isBlank() && selectedNodeId == null) return
         val docId = _currentDocument.value?.id ?: return
 
-        viewModelScope.launch {
+        startGenerationJob {
             _generationState.value = GenerationState(
                 generationId = "edit_${System.currentTimeMillis()}",
                 status = "generating",
@@ -193,25 +199,22 @@ class DesignViewModel(
 
             delay(800)
 
-            val result = runCatching {
-                repository.editDocument(docId, prompt, selectedNodeId)
-            }
-
-            result.fold(
-                onSuccess = { genState ->
-                    _generationState.value = genState
-                    val current = _currentDocument.value
-                    if (current != null && genState.snapshotUrl != null) {
-                        _currentDocument.value = current.copy(
+            try {
+                val genState = repository.editDocument(docId, prompt, selectedNodeId)
+                _generationState.value = genState
+                if (genState.snapshotUrl != null) {
+                    _currentDocument.update { current ->
+                        current?.copy(
                             version = genState.documentVersion,
                             snapshotUrl = genState.snapshotUrl,
                         )
                     }
-                },
-                onFailure = {
-                    _generationState.value = _generationState.value.copy(status = "error")
-                },
-            )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _generationState.update { it.copy(status = "error") }
+            }
         }
     }
 
@@ -238,10 +241,12 @@ class DesignViewModel(
     fun requestExport(target: ExportTarget) {
         val docId = _currentDocument.value?.id ?: return
         viewModelScope.launch {
-            runCatching {
-                repository.exportDocument(docId, target)
-            }.onSuccess {
-                _exportResult.value = it
+            try {
+                _exportResult.value = repository.exportDocument(docId, target)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                // Keep the current export result; export errors are surfaced by the design surface later.
             }
         }
     }
@@ -251,6 +256,8 @@ class DesignViewModel(
     }
 
     fun resetDesignState() {
+        activeGenerationJob?.cancel()
+        activeGenerationJob = null
         _generationState.value = GenerationState()
         _currentDocument.value = null
         _snapshotVersion.value = 0
@@ -258,5 +265,16 @@ class DesignViewModel(
         _exportResult.value = null
         _promptText.value = ""
         _uiMode.value = DesignMode.VIEW
+    }
+
+    private fun startGenerationJob(block: suspend () -> Unit) {
+        activeGenerationJob?.cancel()
+        val job = viewModelScope.launch { block() }
+        activeGenerationJob = job
+        job.invokeOnCompletion {
+            if (activeGenerationJob === job) {
+                activeGenerationJob = null
+            }
+        }
     }
 }

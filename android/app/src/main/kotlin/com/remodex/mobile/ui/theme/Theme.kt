@@ -1,5 +1,8 @@
 package com.remodex.mobile.ui.theme
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -12,7 +15,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
 import com.remodex.mobile.core.model.AppFontStyle
 import com.remodex.mobile.data.AppFontPreferences
 import com.remodex.mobile.data.ThemePreferences
@@ -103,6 +109,11 @@ fun RemodexTheme(
             else -> LightColorScheme
         }
 
+    RemodexSystemBars(
+        background = colorScheme.background,
+        darkTheme = darkTheme,
+    )
+
     MaterialTheme(
         colorScheme = colorScheme,
         typography = remodexTypography(appFontStyle),
@@ -110,3 +121,31 @@ fun RemodexTheme(
         content = content,
     )
 }
+
+@Composable
+private fun RemodexSystemBars(
+    background: Color,
+    darkTheme: Boolean,
+) {
+    val context = LocalContext.current
+    DisposableEffect(context, background, darkTheme) {
+        val window = context.findActivity()?.window
+        if (window != null) {
+            val color = background.toArgb()
+            window.statusBarColor = color
+            window.navigationBarColor = color
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
+            }
+        }
+        onDispose {}
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }

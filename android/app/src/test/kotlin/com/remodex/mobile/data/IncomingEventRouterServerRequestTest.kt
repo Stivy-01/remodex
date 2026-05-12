@@ -13,16 +13,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 
-private const val ROUTER_TEST_TIMEOUT_MS = 5_000L
-
+@OptIn(ExperimentalCoroutinesApi::class)
 class IncomingEventRouterServerRequestTest {
     @Test
     fun dispatchServerRequest_enqueuesCommandApprovalAndReturnsDecisionObject() =
-        runBlocking {
+        runTest {
             val pending =
                 CompletableDeferred<Pair<PendingApprovalRequest, (PendingApprovalDecision) -> Unit>>()
             val response = CompletableDeferred<RPCMessage>()
@@ -41,13 +42,13 @@ class IncomingEventRouterServerRequestTest {
                 respond = { response.complete(it) },
             )
 
-            val (request, respond) = withTimeout(ROUTER_TEST_TIMEOUT_MS) { pending.await() }
+            val (request, respond) = pending.await()
             assertEquals("item/commandExecution/requestApproval", request.method)
             assertEquals("git status", request.command)
             assertEquals("Inspect workspace", request.reason)
             respond(PendingApprovalDecision.Decline)
 
-            val message = withTimeout(ROUTER_TEST_TIMEOUT_MS) { response.await() }
+            val message = response.await()
             assertEquals(JSONValue.Str("approval-1"), message.id)
             assertEquals(JSONValue.Obj(mapOf("decision" to JSONValue.Str("decline"))), message.result)
             assertNull(message.error)
@@ -56,7 +57,7 @@ class IncomingEventRouterServerRequestTest {
 
     @Test
     fun dispatchServerRequest_appendsPendingApprovalTimelineMarkerWhenThreadScoped() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val pending =
                 CompletableDeferred<Pair<PendingApprovalRequest, (PendingApprovalDecision) -> Unit>>()
@@ -80,7 +81,7 @@ class IncomingEventRouterServerRequestTest {
                 respond = { response.complete(it) },
             )
 
-            val (request, respond) = withTimeout(ROUTER_TEST_TIMEOUT_MS) { pending.await() }
+            val (request, respond) = pending.await()
             assertEquals("thr-99", request.threadId)
             assertEquals("turn-aa", request.turnId)
             assertEquals("item-ii", request.itemId)
@@ -97,13 +98,13 @@ class IncomingEventRouterServerRequestTest {
             )
 
             respond(PendingApprovalDecision.Accept)
-            withTimeout(ROUTER_TEST_TIMEOUT_MS) { response.await() }
+            response.await()
             Unit
         }
 
     @Test
     fun dispatchServerRequest_commandApprovalAcceptForSessionUsesDecisionPayload() =
-        runBlocking {
+        runTest {
             val pending =
                 CompletableDeferred<Pair<PendingApprovalRequest, (PendingApprovalDecision) -> Unit>>()
             val response = CompletableDeferred<RPCMessage>()
@@ -116,10 +117,10 @@ class IncomingEventRouterServerRequestTest {
                 respond = { response.complete(it) },
             )
 
-            val (_, respond) = withTimeout(ROUTER_TEST_TIMEOUT_MS) { pending.await() }
+            val (_, respond) = pending.await()
             respond(PendingApprovalDecision.AcceptForSession)
 
-            val message = withTimeout(ROUTER_TEST_TIMEOUT_MS) { response.await() }
+            val message = response.await()
             assertEquals(JSONValue.Str("approval-session"), message.id)
             assertEquals(
                 JSONValue.Obj(mapOf("decision" to JSONValue.Str("acceptForSession"))),
@@ -130,7 +131,7 @@ class IncomingEventRouterServerRequestTest {
 
     @Test
     fun dispatchServerRequest_autoApprovesWhenFullAccessIsEnabled() =
-        runBlocking {
+        runTest {
             val response = routerResponseFor(
                 method = "desktop/custom/requestApproval",
                 requestId = JSONValue.NumLong(42),
@@ -145,7 +146,7 @@ class IncomingEventRouterServerRequestTest {
 
     @Test
     fun dispatchServerRequest_answersStructuredUserInputAfterUserResponse() =
-        runBlocking {
+        runTest {
             val pending =
                 CompletableDeferred<
                     Pair<PendingStructuredInputRequest, (answersByQuestionId: Map<String, List<String>>) -> Unit>,
@@ -187,13 +188,13 @@ class IncomingEventRouterServerRequestTest {
                 respond = { response.complete(it) },
             )
 
-            val (request, respond) = withTimeout(ROUTER_TEST_TIMEOUT_MS) { pending.await() }
+            val (request, respond) = pending.await()
             assertEquals("mode", request.questions.single().id)
             assertEquals("Pick a mode", request.questions.single().question)
             assertEquals("Plan", request.questions.single().options.single().label)
             respond(mapOf("mode" to listOf("Plan")))
 
-            val message = withTimeout(ROUTER_TEST_TIMEOUT_MS) { response.await() }
+            val message = response.await()
             assertEquals(JSONValue.Str("input-1"), message.id)
             assertEquals(
                 JSONValue.Obj(
@@ -219,7 +220,7 @@ class IncomingEventRouterServerRequestTest {
 
     @Test
     fun dispatchServerRequest_appendsStructuredInputTimelineMarkerWhenThreadScoped() =
-        runBlocking {
+        runTest {
             val timeline = MessageTimelineStore()
             val pending =
                 CompletableDeferred<
@@ -255,7 +256,7 @@ class IncomingEventRouterServerRequestTest {
                 respond = { response.complete(it) },
             )
 
-            val (request, respond) = withTimeout(ROUTER_TEST_TIMEOUT_MS) { pending.await() }
+            val (request, respond) = pending.await()
             val row = timeline.messagesByThread.value["thr-structured"]?.singleOrNull()
             assertNotNull(row)
             assertEquals(CodexMessageKind.userInputPrompt, row.kind)
@@ -263,13 +264,13 @@ class IncomingEventRouterServerRequestTest {
             assertEquals("Choose speed", row.text)
 
             respond(mapOf("mode" to listOf("fast")))
-            withTimeout(ROUTER_TEST_TIMEOUT_MS) { response.await() }
+            response.await()
             Unit
         }
 
     @Test
     fun dispatchServerRequest_rejectsUnsupportedServerRequest() =
-        runBlocking {
+        runTest {
             val response = routerResponseFor(
                 method = "item/tool/unsupported",
                 requestId = JSONValue.Str("unsupported-1"),
@@ -505,7 +506,7 @@ class IncomingEventRouterServerRequestTest {
             params = null,
             respond = { response.complete(it) },
         )
-        return withTimeout(ROUTER_TEST_TIMEOUT_MS) { response.await() }
+        return response.await()
     }
 
     private fun newRouter(
@@ -523,7 +524,7 @@ class IncomingEventRouterServerRequestTest {
         persistedThreadRename: (String) -> String? = { null },
     ): IncomingEventRouter =
         IncomingEventRouter(
-            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+            scope = CoroutineScope(UnconfinedTestDispatcher()),
             threads = threads,
             activeThreadId = MutableStateFlow(null),
             messageTimeline = messageTimeline,

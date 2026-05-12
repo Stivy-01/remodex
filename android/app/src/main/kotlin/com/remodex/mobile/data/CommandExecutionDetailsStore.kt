@@ -51,7 +51,7 @@ internal class CommandExecutionDetailsStore {
         if (chunk.isEmpty()) return
         synchronized(lock) {
             val current = _detailsByItemId.value
-            val existing = current[key] ?: return
+            val existing = current[key] ?: CommandExecutionDetails(fullCommand = "command")
             val next = existing.copy(outputTail = existing.outputTail + chunk)
             next.trimOutputTail()
             _detailsByItemId.value = current + (key to next)
